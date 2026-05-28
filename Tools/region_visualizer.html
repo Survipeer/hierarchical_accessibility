@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transit Region Visualizer</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0f14;
+    --surface: #161922;
+    --border: #252a36;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #38bdf8;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  header h1 {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .header-divider { width: 1px; height: 20px; background: var(--border); }
+
+  .upload-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+  }
+
+  .upload-area label {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .file-inputs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .file-btn {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .file-btn input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .file-btn span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: var(--border);
+    border: 1px solid #2d3748;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+    color: var(--text);
+    transition: border-color 0.2s;
+    white-space: nowrap;
+  }
+
+  .file-btn:hover span { border-color: var(--accent); color: var(--accent); }
+  .file-btn.loaded span { border-color: #22c55e; color: #22c55e; }
+
+  .load-btn {
+    padding: 5px 14px;
+    background: var(--accent);
+    color: #0d0f14;
+    border: none;
+    border-radius: 4px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+  }
+
+  .load-btn:hover { opacity: 0.85; }
+  .load-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .status {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #map {
+    flex: 1;
+    background: #0a0c10;
+  }
+
+  .sidebar {
+    width: 260px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  .controls {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .control-label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .toggle {
+    display: flex;
+    gap: 4px;
+  }
+
+  .toggle-btn {
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: 'Space Mono', monospace;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .toggle-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #0d0f14;
+    font-weight: 700;
+  }
+
+  .stats {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+  }
+
+  .stat-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .stat-lbl {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .region-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .region-list::-webkit-scrollbar { width: 4px; }
+  .region-list::-webkit-scrollbar-track { background: transparent; }
+  .region-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .region-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border: 1px solid transparent;
+  }
+
+  .region-item:hover { background: var(--bg); }
+  .region-item.selected { background: var(--bg); border-color: var(--border); }
+
+  .region-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .region-name {
+    font-size: 12px;
+    flex: 1;
+  }
+
+  .region-counts {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    gap: 6px;
+  }
+
+  .region-counts .gate-count { color: #fbbf24; }
+
+  .info-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    max-width: 280px;
+    z-index: 500;
+    font-size: 12px;
+    display: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  .info-panel.visible { display: block; }
+
+  .info-name {
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .info-row {
+    display: flex;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 11px;
+    font-family: 'Space Mono', monospace;
+  }
+
+  .info-badge {
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-gate { background: #fbbf2422; color: #fbbf24; border: 1px solid #fbbf2444; }
+  .badge-stop { background: #38bdf822; color: #38bdf8; border: 1px solid #38bdf844; }
+
+  .legend {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .legend-icon {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dot-normal {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #38bdf8;
+  }
+
+  .dot-gate {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    background: #fbbf24;
+    transform: rotate(45deg);
+  }
+
+  /* Leaflet overrides */
+  .leaflet-container { background: #0a0c10 !important; }
+  .leaflet-tile { filter: brightness(0.35) saturate(0.3); }
+  .leaflet-control-zoom a { background: var(--surface) !important; color: var(--text) !important; border-color: var(--border) !important; }
+  .leaflet-control-attribution { background: rgba(13,15,20,0.8) !important; color: var(--muted) !important; font-size: 9px !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Region Visualizer</h1>
+  <div class="header-divider"></div>
+  <div class="upload-area">
+    <label>Load your own data:</label>
+    <div class="file-inputs">
+      <div class="file-btn" id="btn-stops">
+        <input type="file" id="file-stops" accept=".txt,.csv" onchange="fileLoaded('stops',this)">
+        <span>📍 stops.txt</span>
+      </div>
+      <div class="file-btn" id="btn-regions">
+        <input type="file" id="file-regions" accept=".json,.pkl" onchange="fileLoaded('regions',this)">
+        <span>🗺 regions.json</span>
+      </div>
+      <div class="file-btn" id="btn-gates">
+        <input type="file" id="file-gates" accept=".json,.pkl" onchange="fileLoaded('gates',this)">
+        <span>🚪 gates.json</span>
+      </div>
+    </div>
+    <button class="load-btn" onclick="loadUploadedFiles()">Load</button>
+    <span class="status" id="status">Showing: Rajkot (demo data)</span>
+  </div>
+</header>
+
+<div class="main">
+  <div id="map"></div>
+
+  <div class="sidebar">
+    <div class="sidebar-header">Regions</div>
+
+    <div class="controls">
+      <div class="control-row">
+        <span class="control-label">Show stops</span>
+        <div class="toggle">
+          <button class="toggle-btn active" onclick="setStopMode('all',this)">All</button>
+          <button class="toggle-btn" onclick="setStopMode('gates',this)">Gates only</button>
+          <button class="toggle-btn" onclick="setStopMode('none',this)">None</button>
+        </div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Filter region</span>
+        <div class="toggle">
+          <button class="toggle-btn active" onclick="setFilter('all',this)">All</button>
+          <button class="toggle-btn" onclick="setFilter('selected',this)">Selected</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-val" id="stat-regions">—</div>
+        <div class="stat-lbl">Regions</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-stops">—</div>
+        <div class="stat-lbl">Stops</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-gates">—</div>
+        <div class="stat-lbl">Gate stops</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-sel">—</div>
+        <div class="stat-lbl">Selected</div>
+      </div>
+    </div>
+
+    <div class="region-list" id="region-list"></div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-icon"><div class="dot-normal" style="background:#888"></div></div>
+        Regular stop
+      </div>
+      <div class="legend-item">
+        <div class="legend-icon"><div class="dot-gate"></div></div>
+        Gate stop (region boundary)
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="info-panel" id="info-panel">
+  <div class="info-name" id="info-name"></div>
+  <div class="info-row" id="info-row"></div>
+</div>
+
+<script>
+// ─── Demo data embedded ───────────────────────────────────────────────
+const DEMO_DATA = {"stops":[{"id":1,"name":"Madhapar Chowk (BRTS)","lat":22.328686,"lon":70.769203,"region":13,"is_gate":false},{"id":2,"name":"Ayodhya Chowk (BRTS)","lat":22.322741,"lon":70.767868,"region":6,"is_gate":false},{"id":3,"name":"Shital  Park (BRTS)","lat":22.315773,"lon":70.767647,"region":23,"is_gate":false},{"id":4,"name":"Ramadev Pir Chowk (BRTS)","lat":22.310993,"lon":70.767776,"region":23,"is_gate":true},{"id":5,"name":"Nanavati circle (BRTS)","lat":22.30584,"lon":70.768356,"region":22,"is_gate":true},{"id":6,"name":"Raiya Chowk (BRTS)","lat":22.301132,"lon":70.768326,"region":22,"is_gate":false},{"id":7,"name":"Raiya Telephone Exchange (BRTS)","lat":22.294331,"lon":70.769836,"region":22,"is_gate":false},{"id":8,"name":"Indira Circle (BRTS)","lat":22.28853,"lon":70.771248,"region":22,"is_gate":false},{"id":9,"name":"KKV Chowk (BRTS)","lat":22.28632,"lon":70.772141,"region":22,"is_gate":false},{"id":10,"name":"West Zone Office RMC (BRTS)","lat":22.280809,"lon":70.775673,"region":22,"is_gate":false},{"id":11,"name":"Nana Mava Circle (BRTS)","lat":22.276369,"lon":70.777748,"region":22,"is_gate":false},{"id":12,"name":"Mahapuja Dham Chowk (BRTS)","lat":22.270943,"lon":70.780319,"region":22,"is_gate":false},{"id":13,"name":"Om Nagar Chowk (BRTS)","lat":22.26828,"lon":70.782143,"region":6,"is_gate":false},{"id":14,"name":"Mavdi Chowk (BRTS)","lat":22.26524,"lon":70.784233,"region":22,"is_gate":true},{"id":15,"name":"Umiya Chowk (BRTS)","lat":22.260523,"lon":70.787575,"region":1,"is_gate":false},{"id":16,"name":"Ambedkar Nagar (BRTS)","lat":22.255341,"lon":70.788589,"region":1,"is_gate":false},{"id":17,"name":"Goverdhan Chowk (BRTS)","lat":22.251055,"lon":70.791214,"region":1,"is_gate":true},{"id":18,"name":"Punit Nagar (BRTS)","lat":22.248032,"lon":70.794807,"region":0,"is_gate":true},{"id":19,"name":"Gondal Chowk (BRTS)","lat":22.24355890665043,"lon":70.7993324415319,"region":0,"is_gate":false},{"id":20,"name":"Gondal Chowk (RMTS)","lat":22.243,"lon":70.800003,"region":0,"is_gate":true},{"id":21,"name":"New Lalbahadur Society (Pardi Chowk)","lat":22.254601,"lon":70.8041,"region":15,"is_gate":true},{"id":22,"name":"Satya Prakash School","lat":22.254999,"lon":70.807404,"region":15,"is_gate":false},{"id":23,"name":"Vinod Nagar","lat":22.257099,"lon":70.811798,"region":15,"is_gate":false},{"id":24,"name":"Kothariya Chowk","lat":22.258301,"lon":70.816002,"region":6,"is_gate":false},{"id":25,"name":"NALODA NAGAR","lat":22.264851,"lon":70.823181,"region":15,"is_gate":false},{"id":26,"name":"Radha Mira Industrial Estate","lat":22.2637,"lon":70.822304,"region":15,"is_gate":false},{"id":27,"name":"Aji Vasahat","lat":22.2757,"lon":70.832497,"region":23,"is_gate":false},{"id":28,"name":"Ramvan","lat":22.263145,"lon":70.831894,"region":21,"is_gate":false},{"id":29,"name":"Ajidam","lat":22.278491783660964,"lon":70.83618573681629,"region":21,"is_gate":false},{"id":30,"name":"Mansarovar Society","lat":22.277,"lon":70.8386,"region":21,"is_gate":true},{"id":31,"name":"K.S Diesel Engine 80 feet crossing","lat":22.28594,"lon":70.83725,"region":9,"is_gate":false},{"id":32,"name":"Bhojalram Society Crossing","lat":22.296049,"lon":70.833946,"region":9,"is_gate":false},{"id":33,"name":"Dudhsagar Road Crossing","lat":22.29269,"lon":70.835007,"region":9,"is_gate":true},{"id":34,"name":"RMC Transport Nagar","lat":22.2987,"lon":70.833138,"region":22,"is_gate":true},{"id":35,"name":"Marketing Yard","lat":22.30002782154573,"lon":70.83222858111841,"region":6,"is_gate":false},{"id":36,"name":"Lakheshwar Society - R.T.O. Office","lat":22.3039,"lon":70.830399,"region":22,"is_gate":false},{"id":37,"name":"Greenland Chowk","lat":22.3116,"lon":70.828598,"region":0,"is_gate":false},{"id":38,"name":"Shivdhara Residency","lat":22.316299,"lon":70.826897,"region":0,"is_gate":false},{"id":39,"name":"Jai Jawan Jai kisan Society","lat":22.322701,"lon":70.8228,"region":0,"is_gate":false},{"id":40,"name":"Indraprasth Society","lat":22.3265,"lon":70.819801,"region":0,"is_gate":false},{"id":41,"name":"Velnathpara Beginning ( Nr. School No. 71 )","lat":22.334299,"lon":70.811897,"region":0,"is_gate":false},{"id":42,"name":"Velnathpara ( Street No. 17 )","lat":22.334499,"lon":70.812103,"region":0,"is_gate":false},{"id":43,"name":"150 feet Jamnagar road crossing","lat":22.339701,"lon":70.808899,"region":10,"is_gate":true},{"id":44,"name":"Mukhyamantri Aavsh Quarter","lat":22.340244,"lon":70.798492,"region":10,"is_gate":false},{"id":45,"name":"Ashatha sangrila","lat":22.34347,"lon":70.784447,"region":10,"is_gate":false},{"id":46,"name":"Krishna Bungalows (Sadhuvaswani Kunj Road Crossing)","lat":22.342446901392744,"lon":70.77959232622717,"region":6,"is_gate":false},{"id":48,"name":"Manharpura - (150 foot road)","lat":22.337429537750296,"lon":70.77565394311179,"region":10,"is_gate":false},{"id":49,"name":"Madhapar Chowk (RMTS)","lat":22.32952602993992,"lon":70.76974314218931,"region":10,"is_gate":false},{"id":50,"name":"Atal Sarovar","lat":22.320499,"lon":70.734398,"region":10,"is_gate":true},{"id":51,"name":"RMC Suez Treatment Plan","lat":22.31677008527109,"lon":70.74603526110597,"region":10,"is_gate":false},{"id":52,"name":"Raiyadhar Slum Quarter","lat":22.315901,"lon":70.754898,"region":10,"is_gate":false},{"id":53,"name":"Shantinagar","lat":22.312901,"lon":70.7603,"region":10,"is_gate":false},{"id":54,"name":"Shree Ranima rudima chok","lat":22.31205,"lon":70.763542,"region":10,"is_gate":false},{"id":55,"name":"Svapnalok Resi.","lat":22.311399,"lon":70.766602,"region":10,"is_gate":true},{"id":56,"name":"Ramadevpir Chowk (RMTS)","lat":22.311199,"lon":70.767097,"region":10,"is_gate":false},{"id":57,"name":"Nanavati Chowk (RMTS)","lat":22.30508,"lon":70.768555,"region":6,"is_gate":false},{"id":58,"name":"Raiya Chowk (RMTS)","lat":22.3013,"lon":70.768303,"region":10,"is_gate":true},{"id":59,"name":"Brahmasamaj Chowk","lat":22.301001,"lon":70.771698,"region":10,"is_gate":false},{"id":60,"name":"Hanuman Madhi","lat":22.3004,"lon":70.775101,"region":5,"is_gate":false},{"id":61,"name":"Nirmala Convent School","lat":22.297199,"lon":70.776299,"region":5,"is_gate":false},{"id":62,"name":"RMC Fire Brigade","lat":22.2924,"lon":70.778,"region":5,"is_gate":false},{"id":63,"name":"Indubai Mahasatiji Chowk - Kotecha Chowk","lat":22.290701,"lon":70.779099,"region":5,"is_gate":false},{"id":64,"name":"Swaminarayan Temple/Mahila College","lat":22.2927,"lon":70.7826,"region":5,"is_gate":false},{"id":65,"name":"L.I.C. Office","lat":22.293699,"lon":70.786301,"region":5,"is_gate":false},{"id":66,"name":"Astron Chowk/Mahavir Chowk","lat":22.2915,"lon":70.788002,"region":5,"is_gate":false},{"id":67,"name":"Hemugadhavi Hall","lat":22.2894,"lon":70.789703,"region":5,"is_gate":false},{"id":68,"name":"Narsinh Mehta Garden","lat":22.2894,"lon":70.793098,"region":6,"is_gate":false},{"id":69,"name":"Ramkrushna Ashram","lat":22.290501,"lon":70.794502,"region":5,"is_gate":false},{"id":70,"name":"Malaviya Chowk","lat":22.292881,"lon":70.799828,"region":5,"is_gate":false},{"id":71,"name":"Trikon baug","lat":22.29497,"lon":70.801689,"region":5,"is_gate":false},{"id":72,"name":"Shapar Veraval","lat":22.1579,"lon":70.791496,"region":5,"is_gate":false},{"id":73,"name":"Marutinagar (Sarvoday Housing Society)","lat":22.166599,"lon":70.794197,"region":5,"is_gate":true},{"id":74,"name":"ShitalamatajiTemple","lat":22.173599,"lon":70.796227,"region":20,"is_gate":true},{"id":75,"name":"Pardi Village","lat":22.1824,"lon":70.798798,"region":20,"is_gate":false},{"id":76,"name":"Korat Chowk","lat":22.1947,"lon":70.799797,"region":20,"is_gate":true},{"id":77,"name":"Astha Green City","lat":22.1991,"lon":70.800201,"region":2,"is_gate":true},{"id":78,"name":"Khokhaldad","lat":22.205,"lon":70.800598,"region":2,"is_gate":false},{"id":79,"name":"AV Jasani TB Hospital","lat":22.2143,"lon":70.8013,"region":6,"is_gate":true},{"id":80,"name":"Kothariya Solvant","lat":22.2246,"lon":70.801651,"region":2,"is_gate":false},{"id":81,"name":"Rajkamal Petrol Pump","lat":22.2481,"lon":70.800201,"region":2,"is_gate":true},{"id":82,"name":"P & T Colony/Gitanagar","lat":22.2533,"lon":70.800201,"region":2,"is_gate":false},{"id":83,"name":"S.T. Workshop","lat":22.2582,"lon":70.800102,"region":2,"is_gate":false},{"id":84,"name":"Panchsheel Society","lat":22.262501,"lon":70.800003,"region":2,"is_gate":false},{"id":85,"name":"Rajshree auto","lat":22.26498,"lon":70.799767,"region":2,"is_gate":false},{"id":86,"name":"P.D.M. College","lat":22.2682,"lon":70.7995,"region":2,"is_gate":true},{"id":87,"name":"Makkam Chowk","lat":22.2796,"lon":70.799202,"region":8,"is_gate":true},{"id":88,"name":"Nagrik bank","lat":22.2806,"lon":70.800201,"region":18,"is_gate":false},{"id":89,"name":"Kadvibai School","lat":22.283501,"lon":70.800461,"region":18,"is_gate":false},{"id":90,"name":"Aryasamaj","lat":22.287201,"lon":70.801003,"region":7,"is_gate":true},{"id":91,"name":"S.T. Bus Stand","lat":22.291401,"lon":70.801903,"region":18,"is_gate":false},{"id":92,"name":"LalBahadur Shastri Township","lat":22.33952938990669,"lon":70.78188431789958,"region":18,"is_gate":false},{"id":93,"name":"Dwarika Gam","lat":22.33940435235097,"lon":70.78432067972156,"region":18,"is_gate":true},{"id":94,"name":"Shivalay Chowk","lat":22.3368,"lon":70.786797,"region":2,"is_gate":true},{"id":95,"name":"Bhakti park","lat":22.33548446688501,"lon":70.78937454218719,"region":14,"is_gate":true},{"id":96,"name":"Virshavarkar Aavas(Bharat Petrol Pump)","lat":22.33374578869424,"lon":70.78839178136188,"region":14,"is_gate":false},{"id":97,"name":"Santoshinagar","lat":22.328815446538687,"lon":70.78549257161781,"region":14,"is_gate":false},{"id":98,"name":"Radhe Park/Gangotri Park","lat":22.326799,"lon":70.788696,"region":14,"is_gate":true},{"id":99,"name":"Railnagar","lat":22.326,"lon":70.791702,"region":14,"is_gate":true},{"id":100,"name":"Aastha Resi./Rameshwer Park","lat":22.325173153490333,"lon":70.79440821637768,"region":16,"is_gate":false},{"id":101,"name":"Central Ware House","lat":22.324499,"lon":70.796204,"region":7,"is_gate":false},{"id":102,"name":"Popatpara","lat":22.321699,"lon":70.798401,"region":16,"is_gate":false},{"id":103,"name":"Popatpara Post Office","lat":22.319901,"lon":70.799103,"region":16,"is_gate":false},{"id":104,"name":"Popatpara Central Jail","lat":22.3176,"lon":70.800797,"region":16,"is_gate":false},{"id":105,"name":"Junction police choki","lat":22.3144,"lon":70.801697,"region":16,"is_gate":false},{"id":106,"name":"Junction Railway Station","lat":22.311501,"lon":70.802399,"region":16,"is_gate":false},{"id":107,"name":"Kothicompound","lat":22.307699,"lon":70.803299,"region":16,"is_gate":false},{"id":108,"name":"I.P.Mission School","lat":22.304399,"lon":70.803802,"region":16,"is_gate":false},{"id":109,"name":"Dr. Bhimrao Ambedkar Chowk","lat":22.303698,"lon":70.802216,"region":16,"is_gate":false},{"id":110,"name":"Jubeli baug","lat":22.3001,"lon":70.8013,"region":16,"is_gate":false},{"id":111,"name":"Kanta Stri Vikas Gruh","lat":22.2843,"lon":70.801102,"region":16,"is_gate":false},{"id":112,"name":"Bhaktinagar Circle","lat":22.280199,"lon":70.8022,"region":13,"is_gate":false},{"id":113,"name":"Sheth High School","lat":22.2808,"lon":70.805298,"region":7,"is_gate":true},{"id":114,"name":"Kothariya Colony","lat":22.281170319166456,"lon":70.8078847103049,"region":16,"is_gate":false},{"id":115,"name":"Sorathiyawadi Circle","lat":22.281799,"lon":70.810799,"region":16,"is_gate":false},{"id":116,"name":"Suta Hanuman Temple","lat":22.2789,"lon":70.811302,"region":0,"is_gate":true},{"id":117,"name":"Nilkanth Cinema","lat":22.2759,"lon":70.812202,"region":0,"is_gate":false},{"id":118,"name":"Devpara","lat":22.2736,"lon":70.812599,"region":0,"is_gate":false},{"id":119,"name":"Ghanshyam Nagar/Nanda Hall","lat":22.2693,"lon":70.813202,"region":0,"is_gate":false},{"id":120,"name":"Govindnagar","lat":22.2666,"lon":70.813904,"region":0,"is_gate":false},{"id":121,"name":"Hudco Police Chowki","lat":22.262899,"lon":70.814598,"region":0,"is_gate":false},{"id":122,"name":"Radhe Park","lat":22.326771,"lon":70.788673,"region":18,"is_gate":true},{"id":123,"name":"Anandpar Gam","lat":22.316299,"lon":70.839302,"region":18,"is_gate":false},{"id":124,"name":"Navagam","lat":22.314837257114696,"lon":70.83660675198267,"region":15,"is_gate":true},{"id":125,"name":"Kuvadava Police Chowki","lat":22.3141,"lon":70.834702,"region":18,"is_gate":false},{"id":126,"name":"Marutinagar 50ft Road Chowk","lat":22.3109,"lon":70.8265,"region":18,"is_gate":false},{"id":127,"name":"Gurudev Park","lat":22.31005314738243,"lon":70.82345259128361,"region":18,"is_gate":false},{"id":128,"name":"Ranchhod Das Ashram","lat":22.3078,"lon":70.81826,"region":18,"is_gate":false},{"id":129,"name":"Parevadi Chowk","lat":22.30643418703241,"lon":70.81036195508558,"region":18,"is_gate":false},{"id":130,"name":"Kesari Hindpool","lat":22.305161,"lon":70.806549,"region":5,"is_gate":false},{"id":131,"name":"Balaji Hanuman","lat":22.2946,"lon":70.804703,"region":5,"is_gate":false},{"id":132,"name":"Divanpara Police Chowki","lat":22.294701,"lon":70.806801,"region":5,"is_gate":false},{"id":133,"name":"Ashapura Temple","lat":22.293501,"lon":70.808296,"region":5,"is_gate":false},{"id":134,"name":"Gundawadi Police Chowki","lat":22.2887,"lon":70.8078,"region":5,"is_gate":false},{"id":135,"name":"Kevdavadi","lat":22.2868,"lon":70.810204,"region":15,"is_gate":false},{"id":136,"name":"Sorthiyavadi circle","lat":22.282339,"lon":70.810493,"region":5,"is_gate":false},{"id":137,"name":"Brahmani Hall","lat":22.2568,"lon":70.816704,"region":5,"is_gate":false},{"id":138,"name":"Gokul Park","lat":22.253201,"lon":70.8181,"region":5,"is_gate":false},{"id":139,"name":"Ranuja Temple","lat":22.247601,"lon":70.818298,"region":5,"is_gate":false},{"id":140,"name":"Kothariya Housing","lat":22.243799,"lon":70.817703,"region":14,"is_gate":false},{"id":141,"name":"Gyandeep School","lat":22.2416,"lon":70.817398,"region":14,"is_gate":true},{"id":142,"name":"Kotharia Gam Talukashala","lat":22.2379,"lon":70.817299,"region":22,"is_gate":false},{"id":143,"name":"Kotharia Village/Jai Bhawani Chowk","lat":22.23668290890029,"lon":70.8174647303964,"region":22,"is_gate":false},{"id":144,"name":"Sardar Chowk (Kothariya)","lat":22.236099,"lon":70.815598,"region":22,"is_gate":false},{"id":145,"name":"Satyam Park (Kothariya)","lat":22.2362,"lon":70.813499,"region":22,"is_gate":false},{"id":146,"name":"Rameshwar Park/Asopalav Park","lat":22.2372,"lon":70.810898,"region":15,"is_gate":false},{"id":147,"name":"Ishwar Park/Sarveshwar Park","lat":22.2372,"lon":70.808998,"region":22,"is_gate":false},{"id":148,"name":"Saibaba Circle","lat":22.237101,"lon":70.808098,"region":1,"is_gate":false},{"id":149,"name":"Utsav Society","lat":22.239599,"lon":70.808098,"region":1,"is_gate":false},{"id":150,"name":"Ridhhi Sidhhi Park Crossing","lat":22.2421,"lon":70.807999,"region":7,"is_gate":false},{"id":151,"name":"Swati Park","lat":22.243999,"lon":70.8078,"region":7,"is_gate":false},{"id":152,"name":"ITI (Khirasara)","lat":22.2341,"lon":70.652901,"region":7,"is_gate":false},{"id":153,"name":"Khirasara Gam Chowkdi","lat":22.2376,"lon":70.654404,"region":7,"is_gate":false},{"id":154,"name":"Metoda crossing","lat":22.243032,"lon":70.664459,"region":7,"is_gate":false},{"id":155,"name":"G.I.D.C. Gate 3","lat":22.246799,"lon":70.673599,"region":7,"is_gate":false},{"id":156,"name":"G.I.D.C. Gate 2","lat":22.249001,"lon":70.679604,"region":7,"is_gate":false},{"id":157,"name":"G.I.D.C. Gate 1","lat":22.249599,"lon":70.681198,"region":15,"is_gate":true},{"id":158,"name":"Vadvajadi Village","lat":22.2549,"lon":70.6922,"region":7,"is_gate":false},{"id":159,"name":"Vagudad Village","lat":22.258101,"lon":70.699898,"region":7,"is_gate":false},{"id":160,"name":"Virda Vajadi Village","lat":22.260401,"lon":70.709801,"region":22,"is_gate":false},{"id":161,"name":"V.V.P. Engineering College","lat":22.2642,"lon":70.714897,"region":18,"is_gate":false},{"id":162,"name":"Haripar Village","lat":22.2652,"lon":70.715897,"region":22,"is_gate":false},{"id":163,"name":"Uma P.T.C. College","lat":22.2679,"lon":70.726097,"region":22,"is_gate":false},{"id":164,"name":"Vruksh mandir","lat":22.2691,"lon":70.732803,"region":22,"is_gate":true},{"id":165,"name":"Kankot - Kalawad Road","lat":22.2693,"lon":70.735298,"region":14,"is_gate":true},{"id":166,"name":"Cosmoplex Cinema","lat":22.2703,"lon":70.741997,"region":14,"is_gate":false},{"id":167,"name":"150 feet road crossing - kalawad road","lat":22.2708,"lon":70.745598,"region":14,"is_gate":false},{"id":168,"name":"Rangoli Park/Lakshmino Dholo","lat":22.2712,"lon":70.749603,"region":15,"is_gate":false},{"id":169,"name":"Mota Mauva","lat":22.2715,"lon":70.753799,"region":13,"is_gate":false},{"id":170,"name":"Everest Park","lat":22.274,"lon":70.757301,"region":13,"is_gate":false},{"id":171,"name":"A.G. Society","lat":22.2763,"lon":70.759804,"region":13,"is_gate":false},{"id":172,"name":"Vrundavan Society","lat":22.277950709287765,"lon":70.7620227813432,"region":13,"is_gate":false},{"id":173,"name":"Crystal Mall","lat":22.2798,"lon":70.763901,"region":13,"is_gate":false},{"id":174,"name":"Atmiya College/Central School","lat":22.2831,"lon":70.7677,"region":13,"is_gate":false},{"id":175,"name":"K.K.V hall","lat":22.2857,"lon":70.771103,"region":13,"is_gate":false},{"id":176,"name":"Wockhart Hospital","lat":22.288099,"lon":70.774902,"region":13,"is_gate":false},{"id":177,"name":"Kothariya Gam","lat":22.23410481933384,"lon":70.81776487897511,"region":13,"is_gate":false},{"id":178,"name":"Saurashtra University","lat":22.290501,"lon":70.743698,"region":13,"is_gate":false},{"id":179,"name":"Saurashtra University Gate","lat":22.287258,"lon":70.750557,"region":15,"is_gate":false},{"id":180,"name":"B.T.Savani (Kidney) Hospital","lat":22.287701,"lon":70.7537,"region":13,"is_gate":true},{"id":181,"name":"ITI (Disable)","lat":22.2847,"lon":70.752602,"region":17,"is_gate":true},{"id":182,"name":"Pushkardham","lat":22.284201,"lon":70.756302,"region":17,"is_gate":false},{"id":183,"name":"Rular Housing","lat":22.280701,"lon":70.758003,"region":17,"is_gate":false},{"id":184,"name":"Kishanpara Chowk","lat":22.298,"lon":70.787598,"region":17,"is_gate":false},{"id":185,"name":"Jilla Panchayat Chowk","lat":22.2983,"lon":70.791397,"region":17,"is_gate":false},{"id":186,"name":"Fullchhab Chowk","lat":22.298599,"lon":70.7939,"region":17,"is_gate":false},{"id":187,"name":"Chitralekha Chowk","lat":22.2966,"lon":70.795998,"region":17,"is_gate":false},{"id":188,"name":"Limda Chowk","lat":22.2964,"lon":70.798798,"region":17,"is_gate":false},{"id":189,"name":"Tramba Village","lat":22.2281,"lon":70.910797,"region":17,"is_gate":false},{"id":190,"name":"Bharad Engineering College","lat":22.236799,"lon":70.901497,"region":15,"is_gate":false},{"id":191,"name":"R.K. University","lat":22.2397,"lon":70.8964,"region":17,"is_gate":false},{"id":192,"name":"Kalipat","lat":22.243,"lon":70.890198,"region":22,"is_gate":false},{"id":193,"name":"150 feet crossing - bhavnagar road","lat":22.245623,"lon":70.885284,"region":14,"is_gate":false},{"id":194,"name":"Krishna International School","lat":22.249201,"lon":70.878899,"region":14,"is_gate":false},{"id":195,"name":"Vithalvav Gaushala","lat":22.257799,"lon":70.8694,"region":14,"is_gate":false},{"id":196,"name":"Sant kesar nur Dargah","lat":22.262199,"lon":70.866798,"region":14,"is_gate":false},{"id":197,"name":"Thebachda - Mahika Patiu","lat":22.2745,"lon":70.860703,"region":11,"is_gate":true},{"id":198,"name":"Aarti Industrial Area","lat":22.275,"lon":70.851601,"region":11,"is_gate":false},{"id":199,"name":"Fulwadi","lat":22.2733,"lon":70.850601,"region":11,"is_gate":false},{"id":200,"name":"Manda Dungar","lat":22.273579,"lon":70.845619,"region":11,"is_gate":false},{"id":201,"name":"Bhimrav Nagar","lat":22.276199,"lon":70.842499,"region":15,"is_gate":false},{"id":202,"name":"Government Polytechnic","lat":22.280899,"lon":70.834,"region":11,"is_gate":false},{"id":203,"name":"Field Marshal Chowk","lat":22.28503,"lon":70.829468,"region":11,"is_gate":false},{"id":204,"name":"Aji G.I.D.C.","lat":22.28419825342106,"lon":70.82561840272568,"region":11,"is_gate":false},{"id":205,"name":"Ambedkar Nagar","lat":22.283859,"lon":70.822777,"region":11,"is_gate":false},{"id":206,"name":"Satyam Park","lat":22.2833,"lon":70.82,"region":9,"is_gate":false},{"id":207,"name":"Jangalesvara Crossing/Bapunagar","lat":22.282801,"lon":70.816902,"region":9,"is_gate":false},{"id":208,"name":"Sbi Bank Chowk","lat":22.2894,"lon":70.7743,"region":9,"is_gate":false},{"id":209,"name":"Indira Circle (RMTS)","lat":22.288998,"lon":70.772552,"region":9,"is_gate":false},{"id":210,"name":"Zawerchand Medhani Tower","lat":22.288,"lon":70.768097,"region":9,"is_gate":false},{"id":211,"name":"Panchayat Nagar Chowk","lat":22.287901,"lon":70.765297,"region":9,"is_gate":false},{"id":212,"name":"Jivan Jyot School","lat":22.2878,"lon":70.762299,"region":15,"is_gate":true},{"id":213,"name":"Akashvani Chowk","lat":22.28746,"lon":70.75972,"region":9,"is_gate":true},{"id":214,"name":"Shiv Shakti Colony (RMTS)","lat":22.287701,"lon":70.756302,"region":1,"is_gate":false},{"id":215,"name":"shree ram hospital(metoda)","lat":22.227501,"lon":70.677498,"region":1,"is_gate":false},{"id":216,"name":"Aandhra bank(kishan gate road)","lat":22.239901,"lon":70.675003,"region":1,"is_gate":false},{"id":217,"name":"Veer Savarkar Nagar (Avadh Road)","lat":22.273991,"lon":70.723938,"region":1,"is_gate":true},{"id":218,"name":"Vrundavan Housing Co-operative Service Society","lat":22.278438172662565,"lon":70.72383715551668,"region":1,"is_gate":false},{"id":219,"name":"Parishram Housing Co-operative Service Society","lat":22.2785,"lon":70.731598,"region":1,"is_gate":false},{"id":220,"name":"Parivar Society ( Ruda)","lat":22.2752,"lon":70.730904,"region":1,"is_gate":true},{"id":221,"name":"Om Housing Co. Opearating Service Society","lat":22.274,"lon":70.730698,"region":19,"is_gate":true},{"id":222,"name":"ShivShakti Housing Co. Operating Service Society","lat":22.2717,"lon":70.7304,"region":19,"is_gate":false},{"id":223,"name":"Galaxy Chowk","lat":22.2708,"lon":70.729103,"region":13,"is_gate":true},{"id":224,"name":"Jagnath Temple","lat":22.293301,"lon":70.791298,"region":16,"is_gate":true},{"id":225,"name":"Dharmendrasinhji College","lat":22.2911,"lon":70.793198,"region":19,"is_gate":false},{"id":226,"name":"131 slum quater.","lat":22.314199,"lon":70.795403,"region":14,"is_gate":true},{"id":227,"name":"Julelal Temple","lat":22.314501,"lon":70.796799,"region":19,"is_gate":false},{"id":228,"name":"Rafuji Colony/Shashtri Nagar","lat":22.316299,"lon":70.799004,"region":19,"is_gate":false},{"id":229,"name":"Hansarajnagar","lat":22.316842167215047,"lon":70.79986979937132,"region":19,"is_gate":false},{"id":230,"name":"Junction Railway police station","lat":22.3137,"lon":70.801903,"region":19,"is_gate":true},{"id":231,"name":"Bombay Hotel","lat":22.2845,"lon":70.799896,"region":19,"is_gate":false},{"id":232,"name":"Doshi Hospital-Shivnagar","lat":22.264799,"lon":70.799797,"region":19,"is_gate":false},{"id":233,"name":"PunitNagar Circle (RMTS)","lat":22.247511,"lon":70.795372,"region":19,"is_gate":false},{"id":234,"name":"Punit Nagar","lat":22.246004,"lon":70.793762,"region":19,"is_gate":false},{"id":235,"name":"Punit Nagar Main Road","lat":22.246004,"lon":70.793762,"region":16,"is_gate":true},{"id":236,"name":"Gauvtam budha nagar","lat":22.241699,"lon":70.792343,"region":19,"is_gate":false},{"id":237,"name":"Vavdee gam/ ward office","lat":22.238319,"lon":70.791969,"region":19,"is_gate":false},{"id":238,"name":"Vavdee gam/ school","lat":22.235201,"lon":70.790527,"region":19,"is_gate":false},{"id":239,"name":"Aangan residency","lat":22.233299,"lon":70.790398,"region":19,"is_gate":false},{"id":240,"name":"Aakar Heights","lat":22.232651,"lon":70.784851,"region":5,"is_gate":false},{"id":241,"name":"Vraj Villa Apartment","lat":22.236799,"lon":70.783302,"region":5,"is_gate":false},{"id":242,"name":"Dr. Ambedkar Chowk","lat":22.25524653390485,"lon":70.794580163594,"region":5,"is_gate":false},{"id":243,"name":"Akashwani Chowk","lat":22.2876,"lon":70.759399,"region":20,"is_gate":false},{"id":244,"name":"Ruda Office","lat":22.308399,"lon":70.7967,"region":20,"is_gate":false},{"id":245,"name":"G.T.Sheth Hospital/Collector Office","lat":22.3062,"lon":70.796997,"region":20,"is_gate":false},{"id":246,"name":"Shardabaug","lat":22.302509,"lon":70.795242,"region":9,"is_gate":true},{"id":247,"name":"Bahumadi bhavan","lat":22.3025,"lon":70.793198,"region":20,"is_gate":true},{"id":248,"name":"Azad Chowk","lat":22.2992,"lon":70.781303,"region":2,"is_gate":true},{"id":249,"name":"Alkapuri","lat":22.299801,"lon":70.778198,"region":2,"is_gate":false},{"id":250,"name":"Ramdevpir Chowk","lat":22.311199,"lon":70.767799,"region":2,"is_gate":false},{"id":251,"name":"Shital Park (BRTS)","lat":22.315773,"lon":70.767647,"region":2,"is_gate":false},{"id":252,"name":"Shital Park (RMTS)","lat":22.314899,"lon":70.777,"region":2,"is_gate":false},{"id":253,"name":"Bhomeshwer/Airport","lat":22.3165,"lon":70.787697,"region":2,"is_gate":false},{"id":254,"name":"Railway Colony","lat":22.318399,"lon":70.7855,"region":2,"is_gate":false},{"id":255,"name":"BajrangWadi","lat":22.319,"lon":70.784599,"region":2,"is_gate":true},{"id":256,"name":"Vakaner Society Corner","lat":22.32078,"lon":70.78199,"region":1,"is_gate":false},{"id":257,"name":"Gayatridham","lat":22.3244,"lon":70.776497,"region":9,"is_gate":false},{"id":258,"name":"Satyam Shivam Sundaram","lat":22.326099,"lon":70.7743,"region":1,"is_gate":false},{"id":259,"name":"Vora Society","lat":22.327,"lon":70.772598,"region":1,"is_gate":false},{"id":260,"name":"Madhapar Gaam","lat":22.331327,"lon":70.766006,"region":22,"is_gate":false},{"id":261,"name":"shethnagar","lat":22.3342,"lon":70.760002,"region":22,"is_gate":false},{"id":262,"name":"Sainik Society","lat":22.3349,"lon":70.757797,"region":22,"is_gate":false},{"id":263,"name":"District and Sessions court","lat":22.329901,"lon":70.756401,"region":22,"is_gate":false},{"id":264,"name":"Ghanteshwar Park","lat":22.3358,"lon":70.754402,"region":22,"is_gate":false},{"id":265,"name":"Ghanteshvar Village","lat":22.339399,"lon":70.746803,"region":22,"is_gate":false},{"id":266,"name":"Ghanteshwar SRP Camp Road Crossing","lat":22.3407,"lon":70.744301,"region":1,"is_gate":false},{"id":267,"name":"Ratnam Residency","lat":22.33736602564559,"lon":70.74223464510716,"region":1,"is_gate":false},{"id":268,"name":"Astha Residency","lat":22.331699,"lon":70.737,"region":9,"is_gate":false},{"id":269,"name":"Ghanteshvar S.R.P. Camp","lat":22.330200882347267,"lon":70.7367185289052,"region":1,"is_gate":false},{"id":270,"name":"Ghanteshvar S.R.P. Camp (G company)","lat":22.329069510283656,"lon":70.74178400698419,"region":1,"is_gate":false},{"id":271,"name":"Chodhari high school","lat":22.30192,"lon":70.798073,"region":1,"is_gate":true},{"id":272,"name":"Police Head Quarter","lat":22.3074,"lon":70.790199,"region":22,"is_gate":true},{"id":273,"name":"Geet gunjari crosing","lat":22.30703,"lon":70.786697,"region":22,"is_gate":false},{"id":274,"name":"Sankalp Siddh Park","lat":22.306219,"lon":70.781151,"region":22,"is_gate":false},{"id":275,"name":"Shinchy nagar","lat":22.3029,"lon":70.775597,"region":22,"is_gate":false},{"id":276,"name":"Shree Dharmeshwar Marg Chowk","lat":22.3046,"lon":70.766296,"region":22,"is_gate":true},{"id":277,"name":"Santiniketan Park","lat":22.304129,"lon":70.765045,"region":7,"is_gate":true},{"id":278,"name":"santosh park","lat":22.306725,"lon":70.763,"region":7,"is_gate":false},{"id":279,"name":"UMA Khodal Chowk","lat":22.306257,"lon":70.75769,"region":9,"is_gate":false},{"id":280,"name":"Gajanand Chowk","lat":22.306488,"lon":70.757599,"region":14,"is_gate":false},{"id":281,"name":"Sopan Heights","lat":22.311775,"lon":70.756119,"region":2,"is_gate":true},{"id":282,"name":"JK Park","lat":22.304775,"lon":70.754509,"region":2,"is_gate":false},{"id":283,"name":"Santiniketan Avenue(Raiya Gaam)","lat":22.308201,"lon":70.751099,"region":2,"is_gate":false},{"id":284,"name":"Pradhyuman Park","lat":22.300182673656654,"lon":70.83874934120082,"region":2,"is_gate":false},{"id":285,"name":"Dudheshvar Mahadev","lat":22.300301,"lon":70.829803,"region":2,"is_gate":false},{"id":286,"name":"Gadhiyanagar","lat":22.3002,"lon":70.828201,"region":2,"is_gate":false},{"id":287,"name":"Govind Baug","lat":22.3002,"lon":70.821404,"region":0,"is_gate":false},{"id":288,"name":"Sardar Vallabhbhai Vidhyalay","lat":22.3001,"lon":70.818398,"region":0,"is_gate":false},{"id":289,"name":"Jalaram Chowk - Santkabir Road Corner","lat":22.299999,"lon":70.814499,"region":0,"is_gate":false},{"id":290,"name":"Patel Vadi","lat":22.3018,"lon":70.813202,"region":9,"is_gate":false},{"id":291,"name":"Amin Road Akshar Road Crossing","lat":22.289801,"lon":70.783798,"region":0,"is_gate":true},{"id":292,"name":"Gautam Nagar","lat":22.284,"lon":70.787598,"region":0,"is_gate":false},{"id":293,"name":"Chandreshvadi Chowk","lat":22.2808,"lon":70.785797,"region":0,"is_gate":false},{"id":294,"name":"Suryamukhi Hanuman Chowk","lat":22.280001,"lon":70.784203,"region":0,"is_gate":false},{"id":295,"name":"Madhunagar/Rajnagar Society","lat":22.2754,"lon":70.786697,"region":9,"is_gate":false},{"id":296,"name":"Mayani chowk","lat":22.274099,"lon":70.787399,"region":9,"is_gate":false},{"id":297,"name":"Mavdi Fire Station","lat":22.2708,"lon":70.790199,"region":9,"is_gate":false},{"id":298,"name":"Fuliya Hanuman Temple","lat":22.269899,"lon":70.789001,"region":9,"is_gate":false},{"id":299,"name":"Mavdi Chokdi (RMTS)","lat":22.264799,"lon":70.784599,"region":9,"is_gate":false},{"id":300,"name":"Jithariya Hanuman Temple","lat":22.2635,"lon":70.783501,"region":9,"is_gate":false},{"id":301,"name":"Bapa Sitaram Chowk","lat":22.30135398517445,"lon":70.76244596155216,"region":9,"is_gate":true},{"id":302,"name":"Bapa Sitaram Chowk","lat":22.26026089225484,"lon":70.78148850557643,"region":9,"is_gate":false},{"id":303,"name":"Sorthiya Parivar wadi","lat":22.2582,"lon":70.782204,"region":18,"is_gate":false},{"id":304,"name":"Radha krushn Chowk","lat":22.2558,"lon":70.782997,"region":18,"is_gate":false},{"id":305,"name":"Sanskar City","lat":22.2547,"lon":70.781601,"region":18,"is_gate":false},{"id":306,"name":"Gurudev Park","lat":22.25319804238649,"lon":70.78250823790624,"region":18,"is_gate":false},{"id":307,"name":"Shayamal City","lat":22.250999,"lon":70.783897,"region":18,"is_gate":true},{"id":308,"name":"Jay Sardar Chowk","lat":22.2498,"lon":70.784401,"region":18,"is_gate":false},{"id":309,"name":"Akshar Complex","lat":22.247601,"lon":70.7855,"region":18,"is_gate":false},{"id":310,"name":"Khodal Chowk,Mavdi","lat":22.246799,"lon":70.786102,"region":18,"is_gate":false},{"id":311,"name":"Satyam Hills","lat":22.243799,"lon":70.787399,"region":18,"is_gate":true},{"id":312,"name":"Tapan Hights","lat":22.2416,"lon":70.786598,"region":9,"is_gate":false},{"id":313,"name":"Shri Mansukhbhai Chhapia Township","lat":22.237524,"lon":70.785896,"region":11,"is_gate":true},{"id":314,"name":"Metoda Gam","lat":22.236799,"lon":70.662903,"region":1,"is_gate":false},{"id":315,"name":"Metoda Gam(patiyu)","lat":22.24291,"lon":70.664581,"region":1,"is_gate":false},{"id":316,"name":"Takshashila College","lat":22.276609,"lon":70.68853,"region":1,"is_gate":true},{"id":317,"name":"Jivraj Park","lat":22.261,"lon":70.767998,"region":15,"is_gate":true},{"id":318,"name":"Dwarkadhish chowk","lat":22.2607,"lon":70.762802,"region":15,"is_gate":true},{"id":319,"name":"Ambika Township","lat":22.2619,"lon":70.7658,"region":15,"is_gate":false},{"id":320,"name":"Speedwell Party Plot","lat":22.2659,"lon":70.7621,"region":15,"is_gate":false},{"id":321,"name":"Govani Hostel","lat":22.2665,"lon":70.7621,"region":15,"is_gate":false},{"id":322,"name":"Om Residency","lat":22.268,"lon":70.761902,"region":15,"is_gate":false},{"id":323,"name":"Vrundavan Road Crossing","lat":22.2686,"lon":70.765297,"region":9,"is_gate":false},{"id":324,"name":"Alay Park","lat":22.271099,"lon":70.767403,"region":15,"is_gate":false},{"id":325,"name":"Sastrinagar","lat":22.2719,"lon":70.770103,"region":15,"is_gate":false},{"id":326,"name":"Satyasai Road Crossing","lat":22.273199,"lon":70.773003,"region":15,"is_gate":true},{"id":327,"name":"Nana Mava Chowk (RMTS)","lat":22.2757,"lon":70.777603,"region":1,"is_gate":false},{"id":328,"name":"Grand Central Mall","lat":22.2777,"lon":70.781097,"region":1,"is_gate":false},{"id":329,"name":"Astron Society","lat":22.284599,"lon":70.781601,"region":15,"is_gate":false},{"id":330,"name":"Hinglajnagar (bharvad Chowk)","lat":22.287001,"lon":70.780098,"region":22,"is_gate":false},{"id":331,"name":"Amin Road Civic Center","lat":22.288401,"lon":70.781898,"region":22,"is_gate":false},{"id":332,"name":"Shyamji Krushna Varma Township","lat":22.334181,"lon":70.795311,"region":22,"is_gate":false},{"id":333,"name":"Amrut residency - 3","lat":22.333,"lon":70.797997,"region":22,"is_gate":false},{"id":334,"name":"Dr.Hedgevar Township","lat":22.3288,"lon":70.795799,"region":6,"is_gate":true},{"id":335,"name":"Amrut residency - 2","lat":22.3309,"lon":70.7957,"region":9,"is_gate":false},{"id":336,"name":"Ghanshyam Residency","lat":22.3283,"lon":70.796997,"region":0,"is_gate":false},{"id":337,"name":"53 Quater/Popat para","lat":22.329,"lon":70.799896,"region":15,"is_gate":false},{"id":338,"name":"Gurukul","lat":22.2756,"lon":70.800201,"region":15,"is_gate":false},{"id":339,"name":"Gopalnagar Choro","lat":22.2736,"lon":70.800301,"region":15,"is_gate":false},{"id":340,"name":"Jasani School","lat":22.2708,"lon":70.8004,"region":22,"is_gate":false},{"id":341,"name":"Ambaji Kadva Plot","lat":22.268499,"lon":70.796303,"region":18,"is_gate":false},{"id":342,"name":"Swaminarayan Chowk","lat":22.2682,"lon":70.793503,"region":18,"is_gate":true},{"id":343,"name":"Guruprasad Chowk","lat":22.2642,"lon":70.793602,"region":18,"is_gate":false},{"id":344,"name":"Panchsheel Society Aproch Road (Dalibai Hospital)","lat":22.2619,"lon":70.793999,"region":18,"is_gate":true},{"id":345,"name":"Gokuldham","lat":22.260201,"lon":70.794098,"region":17,"is_gate":true},{"id":346,"name":"Gokulnagar Aproch (Nirav complex)","lat":22.2577,"lon":70.794296,"region":9,"is_gate":false},{"id":347,"name":"Jograna chowk","lat":22.253201,"lon":70.795303,"region":17,"is_gate":false},{"id":348,"name":"Punit Nagar (jetco 66 k.v.a.)","lat":22.248899,"lon":70.794403,"region":17,"is_gate":false},{"id":349,"name":"Govardhan Chowk","lat":22.2512,"lon":70.7911,"region":17,"is_gate":false},{"id":350,"name":"Amrapali Fatak","lat":22.29871,"lon":70.78389,"region":17,"is_gate":false},{"id":351,"name":"Bhimrav Nagar/Om Residency","lat":22.270201,"lon":70.761101,"region":17,"is_gate":false},{"id":352,"name":"Mokaji Circle","lat":22.270599,"lon":70.763702,"region":17,"is_gate":false},{"id":353,"name":"Phulvadi Park","lat":22.274401,"lon":70.772499,"region":17,"is_gate":false},{"id":354,"name":"Alap Heritage","lat":22.2761,"lon":70.7714,"region":17,"is_gate":false},{"id":355,"name":"Satysai Hospital","lat":22.278601,"lon":70.769997,"region":17,"is_gate":false},{"id":356,"name":"Swati Soc.","lat":22.279301,"lon":70.769798,"region":17,"is_gate":false},{"id":357,"name":"Jilla Garden Chowk","lat":22.288799,"lon":70.813797,"region":9,"is_gate":true},{"id":358,"name":"Ramnath Para (B-Division Police Station)","lat":22.2913,"lon":70.814102,"region":17,"is_gate":false},{"id":359,"name":"Bhanji Bapa bridge","lat":22.292173,"lon":70.81562,"region":17,"is_gate":false},{"id":360,"name":"Chunarvad Chowk","lat":22.293699,"lon":70.820198,"region":13,"is_gate":false},{"id":361,"name":"Rajkot Dairy","lat":22.2939,"lon":70.826202,"region":13,"is_gate":false},{"id":362,"name":"Insurance (vima) Hospital","lat":22.292999,"lon":70.830399,"region":23,"is_gate":false},{"id":363,"name":"Gujarat Housing Board Quarter/ Sagar Chok","lat":22.292749,"lon":70.832176,"region":23,"is_gate":false},{"id":364,"name":"Shree H.N.Shukla College","lat":22.293623,"lon":70.858856,"region":23,"is_gate":false},{"id":365,"name":"Bhagirath Society - Marketing Yard","lat":22.305,"lon":70.829903,"region":23,"is_gate":false},{"id":366,"name":"Gramudhyog Mandir Pedak","lat":22.3074,"lon":70.828499,"region":23,"is_gate":false},{"id":367,"name":"Satellite Chowk - Marutinagar aproach Road","lat":22.306299,"lon":70.825401,"region":23,"is_gate":false},{"id":368,"name":"Aryanagar - Pedak road","lat":22.305099,"lon":70.823196,"region":12,"is_gate":true},{"id":369,"name":"Balak Hanuman Chowk","lat":22.303800803394296,"lon":70.81959362673607,"region":15,"is_gate":false},{"id":370,"name":"Champak Nagar - Pani no Dhodo","lat":22.303341,"lon":70.818268,"region":15,"is_gate":true},{"id":371,"name":"Sadhuvasvani School","lat":22.289499,"lon":70.761398,"region":13,"is_gate":false},{"id":372,"name":"Janakpuri - Ajanta Park","lat":22.292101,"lon":70.759903,"region":13,"is_gate":false},{"id":373,"name":"BalajiPark/Satelite Park","lat":22.294701,"lon":70.758598,"region":13,"is_gate":false},{"id":374,"name":"Guruji Nagar","lat":22.298815,"lon":70.757385,"region":20,"is_gate":false},{"id":375,"name":"Alap Green City","lat":22.3009,"lon":70.757103,"region":20,"is_gate":false},{"id":376,"name":"Raiya Village","lat":22.299,"lon":70.751503,"region":20,"is_gate":false},{"id":377,"name":"Pam. Universe Crossing","lat":22.2983,"lon":70.7491,"region":20,"is_gate":false},{"id":378,"name":"Raya Mukti Dham","lat":22.298635,"lon":70.746078,"region":20,"is_gate":false},{"id":379,"name":"Drainage pumping Station (Raiya)","lat":22.299801,"lon":70.742203,"region":12,"is_gate":false},{"id":380,"name":"Light House (Raiya)","lat":22.303801,"lon":70.736504,"region":20,"is_gate":false},{"id":381,"name":"Jalaram Chowk (Gayatrinagar Road)","lat":22.2771,"lon":70.804497,"region":20,"is_gate":false},{"id":382,"name":"Jivraj Hospital","lat":22.272301,"lon":70.804398,"region":20,"is_gate":true},{"id":383,"name":"Trishul Chowk (Pipaliya Hall)","lat":22.2698,"lon":70.804604,"region":19,"is_gate":true},{"id":384,"name":"Pipaliya hall/Bhakti Hall","lat":22.2691,"lon":70.805397,"region":19,"is_gate":false},{"id":385,"name":"Babariya Colony","lat":22.2644,"lon":70.805199,"region":19,"is_gate":false},{"id":386,"name":"Ahir Chowk","lat":22.2616,"lon":70.804703,"region":1,"is_gate":true},{"id":387,"name":"Shyam Hall","lat":22.261801,"lon":70.807899,"region":1,"is_gate":false},{"id":388,"name":"Patel Chowk(shree haribhai dhava road)","lat":22.26272,"lon":70.810867,"region":23,"is_gate":false},{"id":389,"name":"New Subhasnagar","lat":22.265301,"lon":70.811501,"region":23,"is_gate":false},{"id":390,"name":"Sahakar Society","lat":22.2698,"lon":70.808197,"region":12,"is_gate":true},{"id":391,"name":"Valkeshwar Society","lat":22.2715,"lon":70.806,"region":23,"is_gate":true},{"id":392,"name":"Jaljit Hall","lat":22.2763,"lon":70.806297,"region":23,"is_gate":false},{"id":393,"name":"Bhaktinagar 2","lat":22.280199,"lon":70.8022,"region":23,"is_gate":false},{"id":394,"name":"Trikon Baug 2","lat":22.295018,"lon":70.801766,"region":22,"is_gate":false},{"id":395,"name":"Dhanshayam Nagar","lat":22.26952,"lon":70.812721,"region":22,"is_gate":false},{"id":396,"name":"Parsananagar","lat":22.318001,"lon":70.795799,"region":18,"is_gate":false},{"id":397,"name":"Parsananagar Main Road","lat":22.315201,"lon":70.792198,"region":18,"is_gate":false},{"id":398,"name":"Parsananagar (Ayapapaa mandir)","lat":22.313999,"lon":70.7911,"region":18,"is_gate":false},{"id":399,"name":"Special School For Boys","lat":22.311701,"lon":70.7939,"region":18,"is_gate":false},{"id":400,"name":"Diwanpara Police Chowki","lat":22.294741,"lon":70.806824,"region":18,"is_gate":false},{"id":401,"name":"Nadoda Nagar","lat":22.259899,"lon":70.817596,"region":13,"is_gate":true},{"id":402,"name":"Ramvan Crossing","lat":22.27,"lon":70.827797,"region":18,"is_gate":false},{"id":403,"name":"Aaji 66 kv Station","lat":22.272829,"lon":70.830307,"region":18,"is_gate":false},{"id":404,"name":"IP Mission School","lat":22.304399,"lon":70.803802,"region":18,"is_gate":false},{"id":405,"name":"Vimal Nagar","lat":22.282101,"lon":70.753502,"region":18,"is_gate":false},{"id":406,"name":"A.G. Staff Quarter","lat":22.2815,"lon":70.750801,"region":18,"is_gate":false},{"id":407,"name":"Prasheel Park","lat":22.2831,"lon":70.749702,"region":20,"is_gate":false},{"id":408,"name":"somesvasr mahadev munjka gam","lat":22.287399,"lon":70.741798,"region":2,"is_gate":false},{"id":409,"name":"new Munjka","lat":22.2887,"lon":70.741402,"region":2,"is_gate":false},{"id":410,"name":"Shree city (Munjka gam)","lat":22.2899,"lon":70.735199,"region":19,"is_gate":false},{"id":411,"name":"Dr.Shyama Prasad Mukherjee Nagar","lat":22.29147,"lon":70.730583,"region":19,"is_gate":false},{"id":412,"name":"Criste collage","lat":22.2908,"lon":70.725998,"region":13,"is_gate":true},{"id":414,"name":"badhinu patiyu","lat":22.370399,"lon":70.692001,"region":19,"is_gate":false},{"id":415,"name":"Khanderi Cricket Stadium","lat":22.360901,"lon":70.707901,"region":19,"is_gate":true},{"id":416,"name":"Nyara Gam Chokdi","lat":22.3484,"lon":70.723503,"region":19,"is_gate":false},{"id":417,"name":"Ekta Socity","lat":22.344801,"lon":70.7341,"region":19,"is_gate":false},{"id":419,"name":"Nageshvar Jain Derasar","lat":22.336901,"lon":70.758102,"region":19,"is_gate":false},{"id":420,"name":"Bhavani Chowk","lat":22.3389,"lon":70.758598,"region":19,"is_gate":false},{"id":421,"name":"Unicare Hospital","lat":22.3409,"lon":70.759102,"region":19,"is_gate":false},{"id":422,"name":"Wankaner Society","lat":22.321199,"lon":70.781303,"region":19,"is_gate":true},{"id":423,"name":"BajrangWadi circle","lat":22.3176,"lon":70.779999,"region":13,"is_gate":false},{"id":424,"name":"Bhagini Nivedita Township","lat":22.335899,"lon":70.800301,"region":1,"is_gate":false},{"id":425,"name":"Chhtrapati Shivaji Township","lat":22.3372,"lon":70.797699,"region":1,"is_gate":false},{"id":426,"name":"Chhtrapati Shivaji Township (Stop 2)","lat":22.3388,"lon":70.796204,"region":12,"is_gate":true},{"id":427,"name":"Maharshi Arvind Township","lat":22.3375,"lon":70.793404,"region":12,"is_gate":false},{"id":428,"name":"Lokmanya Tilak Township / Subhas Chandra Bose Township","lat":22.333,"lon":70.787003,"region":12,"is_gate":false},{"id":429,"name":"Santoshinagar Railway Crossing","lat":22.333852968141223,"lon":70.78105178103543,"region":12,"is_gate":false},{"id":430,"name":"Lal Park Chowk","lat":22.2565,"lon":70.804298,"region":12,"is_gate":false},{"id":431,"name":"Ranuja Nagar","lat":22.2502,"lon":70.805298,"region":12,"is_gate":false},{"id":432,"name":"Madhapar Gaam Gate","lat":22.3535,"lon":70.766998,"region":12,"is_gate":false},{"id":433,"name":"Ishvariya Park","lat":22.3535,"lon":70.765503,"region":12,"is_gate":false},{"id":434,"name":"Regional Science centre","lat":22.3554,"lon":70.766998,"region":13,"is_gate":false},{"id":435,"name":"Parsana Chowk","lat":22.2589,"lon":70.755302,"region":16,"is_gate":false},{"id":436,"name":"Veer Hanumant Township","lat":22.259899,"lon":70.756599,"region":12,"is_gate":false},{"id":437,"name":"Shree Ram Township","lat":22.262899,"lon":70.760101,"region":12,"is_gate":false},{"id":438,"name":"Laxman Township","lat":22.256752,"lon":70.762627,"region":12,"is_gate":false},{"id":439,"name":"Court yard","lat":22.254299,"lon":70.764801,"region":12,"is_gate":false},{"id":440,"name":"kasturi recidency","lat":22.256067,"lon":70.769302,"region":12,"is_gate":false},{"id":441,"name":"Trishul Chawk (Mota Mauva)","lat":22.25672,"lon":70.771423,"region":12,"is_gate":false},{"id":442,"name":"Dream city","lat":22.254,"lon":70.772903,"region":12,"is_gate":false},{"id":443,"name":"krushna Township","lat":22.255892,"lon":70.776276,"region":12,"is_gate":false},{"id":444,"name":"Mavdi Gam","lat":22.256399,"lon":70.779297,"region":12,"is_gate":false},{"id":445,"name":"BAPASITARAM CHOWK","lat":22.260201,"lon":70.781601,"region":6,"is_gate":false},{"id":446,"name":"Anand Bunglow Chowk","lat":22.2729,"lon":70.793701,"region":11,"is_gate":false},{"id":447,"name":"Sarojeeni Nayadu School (Ambaji Kadva Plot)","lat":22.270399,"lon":70.793198,"region":12,"is_gate":false},{"id":448,"name":"Shivam park","lat":22.329901,"lon":70.793701,"region":12,"is_gate":false},{"id":449,"name":"Krantiveer Khudiram boss Awas","lat":22.333479824646155,"lon":70.79096407319415,"region":7,"is_gate":false},{"id":450,"name":"Sundram City Crossing","lat":22.338628322969264,"lon":70.77920831182438,"region":8,"is_gate":true},{"id":451,"name":"Santoshinagar (Maharana Pratap Township)","lat":22.335678975177256,"lon":70.78388333848773,"region":8,"is_gate":false},{"id":452,"name":"Krantivir Chandrashekhr Aajad Township","lat":22.3351,"lon":70.782303,"region":9,"is_gate":false},{"id":453,"name":"Gebanshah Pir Dargah","lat":22.309299,"lon":70.800201,"region":9,"is_gate":true},{"id":454,"name":"Jamtower Chowk","lat":22.307699,"lon":70.797501,"region":0,"is_gate":false},{"id":455,"name":"Nandbhumi Tower","lat":22.293501,"lon":70.749496,"region":0,"is_gate":false},{"id":456,"name":"Shilpan onex","lat":22.29491,"lon":70.749481,"region":1,"is_gate":false},{"id":457,"name":"Gangotri Park","lat":22.292391,"lon":70.750061,"region":11,"is_gate":false},{"id":458,"name":"Patidar Chowk","lat":22.294201,"lon":70.754799,"region":17,"is_gate":false},{"id":459,"name":"Jay Gopal Chowk","lat":22.2957,"lon":70.761703,"region":17,"is_gate":false},{"id":460,"name":"Tulsi Baag","lat":22.294701,"lon":70.764603,"region":17,"is_gate":false},{"id":461,"name":"Golden Park","lat":22.2941,"lon":70.769402,"region":17,"is_gate":false},{"id":462,"name":"Raiya Telephone Excenge","lat":22.294701,"lon":70.769699,"region":13,"is_gate":false},{"id":463,"name":"Africa Colony","lat":22.2938,"lon":70.772598,"region":10,"is_gate":false},{"id":464,"name":"Jalaram Plot","lat":22.291401,"lon":70.773201,"region":10,"is_gate":false},{"id":465,"name":"Jivaraj Park (Vasant Vatika)","lat":22.2598,"lon":70.771797,"region":10,"is_gate":false},{"id":466,"name":"Vambe Awas Yojana","lat":22.2729,"lon":70.7612,"region":12,"is_gate":false},{"id":467,"name":"Rajkot Mahanagar Palika  - Township","lat":22.275101,"lon":70.763298,"region":20,"is_gate":false},{"id":468,"name":"Akshar Vatika(Mavadi)","lat":22.2661,"lon":70.770203,"region":11,"is_gate":false},{"id":469,"name":"New Rajdeep Society","lat":22.266199,"lon":70.775002,"region":20,"is_gate":false},{"id":470,"name":"Yadunandan chowk","lat":22.2661,"lon":70.778198,"region":20,"is_gate":false},{"id":471,"name":"Patel nagar","lat":22.267401,"lon":70.780197,"region":20,"is_gate":false},{"id":472,"name":"Omnagar (RMTS)","lat":22.268299,"lon":70.781998,"region":20,"is_gate":false},{"id":473,"name":"Mahapuja Dham Chowk (RMTS)","lat":22.271099,"lon":70.780197,"region":20,"is_gate":false},{"id":474,"name":"Aditypark","lat":22.2724,"lon":70.784302,"region":13,"is_gate":false},{"id":475,"name":"Vishvnagar","lat":22.2728,"lon":70.7854,"region":13,"is_gate":false},{"id":476,"name":"Chandra Nagar Vegitable","lat":22.2733,"lon":70.786598,"region":17,"is_gate":true},{"id":477,"name":"Rajnagar Main Road Crossing","lat":22.273701,"lon":70.787598,"region":18,"is_gate":false},{"id":478,"name":"Umakant Pandit","lat":22.274799,"lon":70.790298,"region":1,"is_gate":false},{"id":479,"name":"Ashok Garden","lat":22.274401,"lon":70.793098,"region":11,"is_gate":false},{"id":480,"name":"Svashrai Society","lat":22.2736,"lon":70.795197,"region":1,"is_gate":false},{"id":481,"name":"Bhaktinagar Station","lat":22.283001,"lon":70.7948,"region":19,"is_gate":false},{"id":482,"name":"Bhagvati para sheri no.9","lat":22.3155,"lon":70.8088,"region":20,"is_gate":true},{"id":483,"name":"Mahakali soci.","lat":22.315599,"lon":70.8088,"region":20,"is_gate":false},{"id":484,"name":"Bhagavati para Police choki","lat":22.3165,"lon":70.808098,"region":20,"is_gate":false},{"id":485,"name":"Jay prakashnagar soci.","lat":22.318899,"lon":70.807404,"region":20,"is_gate":false},{"id":486,"name":"Bhagavati para (jay prakashnagar)","lat":22.319799,"lon":70.807297,"region":20,"is_gate":false},{"id":487,"name":"Rajlaxmi soci.","lat":22.325199,"lon":70.813301,"region":20,"is_gate":true},{"id":488,"name":"Radhika park","lat":22.3253,"lon":70.814201,"region":4,"is_gate":true},{"id":489,"name":"Om Residency (Morbi road Crosing)","lat":22.327999,"lon":70.8162,"region":4,"is_gate":false},{"id":490,"name":"Shree Mohandasbapa Ashram","lat":22.226350647646413,"lon":70.91334127346539,"region":11,"is_gate":false},{"id":491,"name":"Arpit eng. Collage","lat":22.435471,"lon":70.781578,"region":4,"is_gate":false},{"id":492,"name":"Hadala gam patiyu/Darshan eng. Collage","lat":22.4282,"lon":70.781502,"region":4,"is_gate":false},{"id":493,"name":"Ratanpar (ramji mandir)","lat":22.4097,"lon":70.789001,"region":4,"is_gate":false},{"id":494,"name":"Ratanpar Telephone Exchange","lat":22.406,"lon":70.7901,"region":4,"is_gate":false},{"id":495,"name":"Gauridad Village","lat":22.3971,"lon":70.794601,"region":4,"is_gate":false},{"id":496,"name":"I.O.C.","lat":22.388399,"lon":70.797798,"region":4,"is_gate":false},{"id":497,"name":"Marwadi College","lat":22.3678,"lon":70.799599,"region":4,"is_gate":false},{"id":498,"name":"Bedi marketing yard","lat":22.352301,"lon":70.804802,"region":4,"is_gate":false},{"id":499,"name":"Bedi village","lat":22.3463,"lon":70.808197,"region":4,"is_gate":false},{"id":500,"name":"shree sardar patel homeopathic collage","lat":22.441072856762545,"lon":70.78132797856219,"region":4,"is_gate":false},{"id":501,"name":"Dhaval Agri Export","lat":22.361077840425143,"lon":70.80165093020223,"region":11,"is_gate":true},{"id":502,"name":"huseni chawk (kothariya)","lat":22.220501,"lon":70.804001,"region":8,"is_gate":false},{"id":503,"name":"Rameshwar Residency","lat":22.2304,"lon":70.812698,"region":8,"is_gate":false},{"id":504,"name":"Kothariya Gam water tank","lat":22.233,"lon":70.817703,"region":8,"is_gate":false},{"id":505,"name":"Manharpura - Bedinaka Fire Station","lat":22.297501,"lon":70.815498,"region":8,"is_gate":false},{"id":506,"name":"RMC East Zone Office","lat":22.296499,"lon":70.817497,"region":8,"is_gate":false},{"id":507,"name":"Thorala Police Station","lat":22.291,"lon":70.823502,"region":8,"is_gate":false},{"id":508,"name":"New Thorala","lat":22.288,"lon":70.826202,"region":8,"is_gate":false},{"id":510,"name":"Maharana pratap Circle","lat":22.3302,"lon":70.731796,"region":8,"is_gate":false},{"id":511,"name":"Chatrapati Shivaji Chowk","lat":22.3339,"lon":70.729797,"region":8,"is_gate":false},{"id":512,"name":"Shivshakti chowk","lat":22.3356,"lon":70.734901,"region":13,"is_gate":true},{"id":513,"name":"Green leaf club","lat":22.337799,"lon":70.7351,"region":8,"is_gate":false},{"id":514,"name":"Wankaner Society Corner","lat":22.320601,"lon":70.782303,"region":8,"is_gate":false},{"id":515,"name":"Janardan Chowk","lat":22.2349,"lon":70.814301,"region":8,"is_gate":false},{"id":516,"name":"Shivam Park (Kothariya)","lat":22.2341,"lon":70.812599,"region":8,"is_gate":false},{"id":517,"name":"Radha Park (Kotharia Gam)","lat":22.233,"lon":70.810303,"region":8,"is_gate":false},{"id":518,"name":"Ratanpar Village","lat":22.411011,"lon":70.788528,"region":8,"is_gate":false},{"id":519,"name":"Government Engineering College","lat":22.2446,"lon":70.742996,"region":4,"is_gate":false},{"id":520,"name":"Labhubhai eng. Collage","lat":22.247499,"lon":70.738701,"region":4,"is_gate":false},{"id":521,"name":"Buddha Vihar","lat":22.2593,"lon":70.734001,"region":4,"is_gate":false},{"id":522,"name":"Gujrat Houseing Board - aavas yojna","lat":22.26494,"lon":70.744133,"region":4,"is_gate":false},{"id":523,"name":"Sunsine Group Of Institute","lat":22.2656,"lon":70.745903,"region":13,"is_gate":true},{"id":524,"name":"Kankot Village","lat":22.2672,"lon":70.734901,"region":4,"is_gate":false},{"id":525,"name":"AIIMS Hospital","lat":22.37108,"lon":70.749153,"region":4,"is_gate":false},{"id":526,"name":"AIIMS Hospital Gate","lat":22.373529,"lon":70.746208,"region":4,"is_gate":false},{"id":527,"name":"Khadherigam Cross Road","lat":22.373779,"lon":70.734383,"region":4,"is_gate":true},{"id":528,"name":"RAIYA GAM(Shilpan Onex)","lat":22.295601,"lon":70.749336,"region":20,"is_gate":true},{"id":530,"name":"PGVCL Region office","lat":22.2819369849679,"lon":70.78699261102061,"region":20,"is_gate":false},{"id":531,"name":"Bapa Sitaram Chowk Crossing","lat":22.262381,"lon":70.782234,"region":20,"is_gate":false},{"id":532,"name":"Saavan Circle","lat":22.25368458532392,"lon":70.77838471552606,"region":7,"is_gate":false},{"id":533,"name":"Shree Ladhabapa Chowk","lat":22.252267594627916,"lon":70.77704955489813,"region":7,"is_gate":false},{"id":534,"name":"Pramukh BLISS","lat":22.248973116727097,"lon":70.77454704144418,"region":14,"is_gate":true},{"id":535,"name":"Vagad Chowk","lat":22.246084,"lon":70.771843,"region":7,"is_gate":false},{"id":537,"name":"Shaneshwar Party Plot","lat":22.236683888262963,"lon":70.7666476503449,"region":7,"is_gate":false},{"id":538,"name":"Tilala Chowk","lat":22.230272,"lon":70.763542,"region":7,"is_gate":false},{"id":540,"name":"Pal  village Bus Stop","lat":22.21533,"lon":70.75739,"region":7,"is_gate":false},{"id":541,"name":"Pal village panchayat","lat":22.2118,"lon":70.75739,"region":7,"is_gate":false},{"id":542,"name":"Ramdevpir Temple","lat":22.20328,"lon":70.74102,"region":7,"is_gate":false},{"id":543,"name":"Gurudev Complex 2","lat":22.20036,"lon":70.73463,"region":7,"is_gate":false},{"id":544,"name":"Ravki police chowki","lat":22.19691,"lon":70.72859,"region":0,"is_gate":false},{"id":545,"name":"Ravki village","lat":22.19386,"lon":70.72472,"region":14,"is_gate":false},{"id":546,"name":"Dhara floor Mill","lat":22.18547,"lon":70.71919,"region":9,"is_gate":false},{"id":547,"name":"Shurabhi Industry Zone","lat":22.17582,"lon":70.71395,"region":13,"is_gate":false},{"id":548,"name":"Shree Nathji Industry Zone","lat":22.1717,"lon":70.71128,"region":13,"is_gate":false},{"id":549,"name":"Shree Ram chowk","lat":22.15643203871091,"lon":70.70791302421492,"region":13,"is_gate":false},{"id":550,"name":"Naranka Gram","lat":22.119537,"lon":70.857292,"region":13,"is_gate":false},{"id":551,"name":"J K. Industrial Zone","lat":22.147339,"lon":70.853882,"region":13,"is_gate":false},{"id":552,"name":"Goldcoin Angel Co.","lat":22.152809,"lon":70.852898,"region":15,"is_gate":false},{"id":553,"name":"J D Industrial Area","lat":22.157108,"lon":70.852013,"region":16,"is_gate":false},{"id":554,"name":"Steam Power Solar Co.","lat":22.16345,"lon":70.850845,"region":16,"is_gate":false},{"id":555,"name":"Khodiyar chowk Lothada","lat":22.170219,"lon":70.848061,"region":16,"is_gate":false},{"id":556,"name":"Lothada gam","lat":22.173851,"lon":70.846451,"region":6,"is_gate":false},{"id":557,"name":"Vadalia Foods","lat":22.176399,"lon":70.845802,"region":14,"is_gate":true},{"id":558,"name":"Mahaavir ind. Area","lat":22.188368,"lon":70.834,"region":16,"is_gate":false},{"id":559,"name":"RTO Khokhadadad","lat":22.190327,"lon":70.832245,"region":20,"is_gate":false},{"id":560,"name":"Khokhadadad gam","lat":22.195044,"lon":70.826744,"region":20,"is_gate":true},{"id":561,"name":"2nd ring road crossing SARDAR CHOWK","lat":22.199732,"lon":70.821655,"region":20,"is_gate":true},{"id":562,"name":"Riverside International School","lat":22.202946,"lon":70.820442,"region":1,"is_gate":false},{"id":563,"name":"Iswar residency","lat":22.208359,"lon":70.818512,"region":10,"is_gate":false},{"id":564,"name":"Shree Rokadiya Party Lawns","lat":22.215387,"lon":70.818047,"region":11,"is_gate":false},{"id":565,"name":"Aadarsh Shivalaya Society","lat":22.229734,"lon":70.81781,"region":11,"is_gate":false},{"id":566,"name":"maarutinagar","lat":22.163347,"lon":70.793068,"region":11,"is_gate":false},{"id":567,"name":"Shitla Mata Mandir","lat":22.174067,"lon":70.796173,"region":11,"is_gate":false},{"id":568,"name":"Kangsiyali Patiya","lat":22.200281,"lon":70.778069,"region":1,"is_gate":true},{"id":569,"name":"Jakharapeer Temple patiya","lat":22.219296,"lon":70.76844,"region":11,"is_gate":false},{"id":570,"name":"Krishna Gaushala","lat":22.233572,"lon":70.761734,"region":17,"is_gate":true},{"id":571,"name":"Sadbhavna Nursery","lat":22.240761,"lon":70.758629,"region":17,"is_gate":false},{"id":572,"name":"Patidaar Chowk (Mavdi Kankot Road)","lat":22.245708,"lon":70.756248,"region":17,"is_gate":false},{"id":573,"name":"Tulsi gold Praied crossing","lat":22.248907,"lon":70.755478,"region":17,"is_gate":false},{"id":574,"name":"Pradhyuman Lawns","lat":22.252735,"lon":70.755783,"region":17,"is_gate":false},{"id":575,"name":"R.K. University (Kalavad Road)","lat":22.261347,"lon":70.752663,"region":17,"is_gate":false},{"id":576,"name":"Shreenathji Chowk","lat":22.263039,"lon":70.751312,"region":17,"is_gate":false},{"id":577,"name":"Patel Chowk","lat":22.26659163544813,"lon":70.74897301135807,"region":20,"is_gate":false},{"id":578,"name":"Global Chowk","lat":22.205547,"lon":70.800407,"region":20,"is_gate":false},{"id":579,"name":"Tulshi Avenue","lat":22.207611,"lon":70.798225,"region":1,"is_gate":false},{"id":580,"name":"Sarvottam Height","lat":22.211683,"lon":70.795418,"region":20,"is_gate":false},{"id":581,"name":"Khodiyar Chowk","lat":22.218122,"lon":70.793564,"region":20,"is_gate":true},{"id":582,"name":"Bage mahamadpark","lat":22.223558,"lon":70.792084,"region":19,"is_gate":true},{"id":583,"name":"Surbhi Possible 2","lat":22.225506,"lon":70.791542,"region":19,"is_gate":false},{"id":584,"name":"Radheshyam Gaushala","lat":22.233013,"lon":70.789413,"region":1,"is_gate":false},{"id":585,"name":"SGVP Gurukul Chowk","lat":22.237143,"lon":70.788422,"region":20,"is_gate":false},{"id":586,"name":"Saswat Heights","lat":22.242823,"lon":70.789406,"region":20,"is_gate":false},{"id":587,"name":"Satyam Chowk","lat":22.244007,"lon":70.789696,"region":20,"is_gate":false},{"id":588,"name":"Jaybharat Primary School","lat":22.24391,"lon":70.79306,"region":18,"is_gate":false},{"id":589,"name":"Jagleshwar Crossing / Bapunagar","lat":22.28306,"lon":70.816673,"region":18,"is_gate":false},{"id":590,"name":"Deluxe Cinema Chowk","lat":22.305891,"lon":70.811707,"region":1,"is_gate":true},{"id":591,"name":"Prajapati Chowk","lat":22.32317,"lon":70.759941,"region":13,"is_gate":false},{"id":592,"name":"Oscar Sky Park","lat":22.321028,"lon":70.762222,"region":21,"is_gate":false},{"id":593,"name":"Shaheed Sukhdev Township","lat":22.31838,"lon":70.762947,"region":21,"is_gate":false},{"id":594,"name":"Golden Heights","lat":22.318127,"lon":70.765808,"region":21,"is_gate":false},{"id":595,"name":"Jagrutideep Heights","lat":22.315889,"lon":70.765968,"region":21,"is_gate":false},{"id":596,"name":"Aaji 66 kv Station (aaji vasahat road crossing)","lat":22.272699,"lon":70.829903,"region":21,"is_gate":false},{"id":597,"name":"Radhika Residency","lat":22.273697,"lon":70.867393,"region":21,"is_gate":false},{"id":598,"name":"Sadguru Park","lat":22.272936,"lon":70.870201,"region":21,"is_gate":false},{"id":599,"name":"Panchsheel College","lat":22.272346,"lon":70.876068,"region":21,"is_gate":false},{"id":600,"name":"Mahika Gam","lat":22.270809,"lon":70.880798,"region":21,"is_gate":false},{"id":601,"name":"Aadarsh, Shri Housing Co-operative Service Society","lat":22.27356,"lon":70.751991,"region":1,"is_gate":true},{"id":602,"name":"Sarita Vihar Society","lat":22.2778,"lon":70.752899,"region":21,"is_gate":false},{"id":603,"name":"Ruda 2","lat":22.2813,"lon":70.750999,"region":21,"is_gate":false},{"id":604,"name":"Chandreshwadi crossing","lat":22.282537351404685,"lon":70.78774113954034,"region":21,"is_gate":false},{"id":605,"name":"Kothariya Solvant fatak","lat":22.2248,"lon":70.803192,"region":21,"is_gate":false},{"id":606,"name":"Rameshwar Chowk","lat":22.302784,"lon":70.76104,"region":21,"is_gate":false},{"id":607,"name":"Vidhyutnagar","lat":22.30261,"lon":70.76059,"region":21,"is_gate":false},{"id":608,"name":"Kailashdhara Park","lat":22.30368,"lon":70.759987,"region":21,"is_gate":false},{"id":609,"name":"Amrut Park Main Road","lat":22.305408,"lon":70.757957,"region":10,"is_gate":false},{"id":610,"name":"Dream City Road","lat":22.311228,"lon":70.756256,"region":10,"is_gate":false},{"id":611,"name":"Raiyagam Crossing","lat":22.304192,"lon":70.727661,"region":10,"is_gate":false},{"id":612,"name":"Light House Crossing","lat":22.307447,"lon":70.727737,"region":1,"is_gate":false},{"id":613,"name":"Atal Sarovar Entrance Gate","lat":22.31835,"lon":70.728218,"region":10,"is_gate":false},{"id":614,"name":"G-road crossing","lat":22.324718,"lon":70.732414,"region":10,"is_gate":false},{"id":615,"name":"Chandra Dileswar Mahadev Road Crossing","lat":22.327009,"lon":70.735023,"region":7,"is_gate":true},{"id":616,"name":"Silver velly/ ratnam Skay","lat":22.341255,"lon":70.736084,"region":7,"is_gate":false},{"id":617,"name":"Parapipaliya patiya","lat":22.343306,"lon":70.736671,"region":7,"is_gate":false},{"id":618,"name":"Copper Elegance","lat":22.264328,"lon":70.765411,"region":9,"is_gate":false},{"id":619,"name":"Mavdi Police Head quarter","lat":22.263565,"lon":70.768196,"region":9,"is_gate":false},{"id":620,"name":"Copper Sand","lat":22.261396,"lon":70.769875,"region":9,"is_gate":false},{"id":621,"name":"Hemadri","lat":22.26025,"lon":70.77491,"region":9,"is_gate":false},{"id":622,"name":"Shivam park / khodal chowk","lat":22.261715,"lon":70.775269,"region":9,"is_gate":false},{"id":623,"name":"Sorathiya park","lat":22.262249,"lon":70.778702,"region":1,"is_gate":false},{"id":624,"name":"P.D.M. Fatak","lat":22.269712,"lon":70.800613,"region":9,"is_gate":false},{"id":625,"name":"Pandit Deendayal Nagar","lat":22.264629,"lon":70.743149,"region":9,"is_gate":false},{"id":626,"name":"Masoom School Mota Mauva","lat":22.267593,"lon":70.75309,"region":3,"is_gate":true},{"id":627,"name":"Dharamshi Korat Chowk","lat":22.271311,"lon":70.752151,"region":3,"is_gate":false},{"id":628,"name":"Mahila ITI","lat":22.285938,"lon":70.752548,"region":3,"is_gate":false},{"id":629,"name":"Shilpan Nova","lat":22.290871,"lon":70.7509,"region":3,"is_gate":false},{"id":630,"name":"AIIMS Hospital Crossing","lat":22.340403,"lon":70.777863,"region":3,"is_gate":false},{"id":631,"name":"Shreenathji Industries Plot No.155","lat":22.36541,"lon":70.963509,"region":3,"is_gate":false},{"id":632,"name":"Sarathi chemical Plot No.11","lat":22.369852,"lon":70.960312,"region":3,"is_gate":false},{"id":633,"name":"Kuwadwa GIDC","lat":22.369028,"lon":70.957001,"region":3,"is_gate":false},{"id":634,"name":"Kuwadwagam","lat":22.362022,"lon":70.943741,"region":1,"is_gate":false},{"id":635,"name":"Vankaner Chowkdi","lat":22.360291,"lon":70.938324,"region":3,"is_gate":false},{"id":636,"name":"Krishna Waterpark","lat":22.346849,"lon":70.925583,"region":9,"is_gate":false},{"id":637,"name":"Agricultural Science Centre/Targhdi","lat":22.341787,"lon":70.911018,"region":4,"is_gate":false},{"id":638,"name":"Trimandir","lat":22.341238,"lon":70.906624,"region":4,"is_gate":false},{"id":639,"name":"Malyasan","lat":22.331442,"lon":70.87957,"region":4,"is_gate":false},{"id":640,"name":"150 feet Ring Road (Bedi Bypass)","lat":22.328588,"lon":70.870605,"region":4,"is_gate":false},{"id":641,"name":"ico Kuwadwa Road","lat":22.326941,"lon":70.85923,"region":4,"is_gate":false},{"id":642,"name":"Satahnuman Temple","lat":22.325977,"lon":70.854027,"region":5,"is_gate":false},{"id":643,"name":"Kuwadwa Police Station","lat":22.324551,"lon":70.851341,"region":13,"is_gate":false},{"id":644,"name":"Chandrana Marketing","lat":22.323273,"lon":70.848801,"region":13,"is_gate":false},{"id":645,"name":"Shanti Industrial","lat":22.322271,"lon":70.845665,"region":1,"is_gate":false},{"id":646,"name":"Shaligram/Khodladham Residency","lat":22.320124,"lon":70.838684,"region":13,"is_gate":false},{"id":647,"name":"Krishna motar","lat":22.227419,"lon":70.802826,"region":13,"is_gate":false},{"id":648,"name":"Somnath main Road / gulabnagar nalu","lat":22.232187,"lon":70.802132,"region":13,"is_gate":false},{"id":649,"name":"Khodiyar Chowk","lat":22.2324840545654,"lon":70.8047816306954,"region":13,"is_gate":false},{"id":650,"name":"shandar residency","lat":22.232756,"lon":70.808174,"region":16,"is_gate":false},{"id":651,"name":"Shivam fual (Bharat Petrol pump)","lat":22.234764,"lon":70.80806,"region":16,"is_gate":false},{"id":652,"name":"gulabnagar","lat":22.235558,"lon":70.805038,"region":16,"is_gate":false},{"id":653,"name":"Balaji steel","lat":22.234066,"lon":70.801819,"region":16,"is_gate":false},{"id":654,"name":"Maldhari railway fatak","lat":22.239288,"lon":70.800415,"region":16,"is_gate":false},{"id":655,"name":"Indraprasth Society /Morby Road crossing","lat":22.325714,"lon":70.820381,"region":16,"is_gate":false},{"id":656,"name":"Sardar Avenue","lat":22.322636,"lon":70.81852,"region":1,"is_gate":true},{"id":657,"name":"JIVRAJPARK-1 STREET NO. 1","lat":22.320864,"lon":70.818062,"region":16,"is_gate":false},{"id":658,"name":"Krishna park","lat":22.318035,"lon":70.8172,"region":16,"is_gate":false},{"id":659,"name":"Shree Yadunandan Chowk","lat":22.317492,"lon":70.818115,"region":18,"is_gate":false},{"id":660,"name":"Somnath Real Home Society","lat":22.314819,"lon":70.819206,"region":18,"is_gate":false},{"id":661,"name":"Naathdwara Park","lat":22.311419,"lon":70.820335,"region":22,"is_gate":false},{"id":662,"name":"Doshi hospital crossing","lat":22.265083,"lon":70.799736,"region":12,"is_gate":false},{"id":663,"name":"Doshi hospital / brahmakumari chowk","lat":22.264776,"lon":70.797043,"region":12,"is_gate":false},{"id":664,"name":"Panchshil Society Community Hall","lat":22.263039,"lon":70.797073,"region":12,"is_gate":false},{"id":665,"name":"samrat industries main road crossing","lat":22.262077,"lon":70.79615,"region":2,"is_gate":false},{"id":666,"name":"samrat industrial Street 1","lat":22.260609,"lon":70.796181,"region":20,"is_gate":false},{"id":667,"name":"samrat industrial Street 10","lat":22.258568,"lon":70.796288,"region":6,"is_gate":false},{"id":668,"name":"Vir narmad township","lat":22.256071,"lon":70.796623,"region":0,"is_gate":true},{"id":669,"name":"Rajkot Postal Colony Sub Post Office","lat":22.25448,"lon":70.7966,"region":20,"is_gate":false},{"id":670,"name":"matru darshan School","lat":22.252287,"lon":70.796921,"region":20,"is_gate":true},{"id":671,"name":"K. K.dholkiya school","lat":22.319771,"lon":70.820465,"region":7,"is_gate":true},{"id":672,"name":"Ribda Railway Station","lat":22.125988,"lon":70.800606,"region":7,"is_gate":false},{"id":673,"name":"Ribda chowkdi","lat":22.12924,"lon":70.783066,"region":7,"is_gate":false},{"id":674,"name":"SGVP School","lat":22.133909,"lon":70.786026,"region":7,"is_gate":false},{"id":675,"name":"shantidham","lat":22.144409,"lon":70.789116,"region":20,"is_gate":false},{"id":676,"name":"Ganga Gate","lat":22.153048,"lon":70.790573,"region":20,"is_gate":false},{"id":677,"name":"Gokulam society","lat":22.266733539613654,"lon":70.72081804587464,"region":20,"is_gate":false},{"id":678,"name":"Jivantika Main Road Crossing","lat":22.3104,"lon":70.771202,"region":1,"is_gate":false},{"id":679,"name":"Lakhno Bunglow","lat":22.309999,"lon":70.773499,"region":0,"is_gate":true},{"id":680,"name":"Aksharnagar","lat":22.311199,"lon":70.775597,"region":20,"is_gate":false},{"id":681,"name":"Mochinagar","lat":22.313801,"lon":70.774597,"region":20,"is_gate":false},{"id":682,"name":"Punitnagar (Near Bajrangwadi)","lat":22.3151,"lon":70.781097,"region":17,"is_gate":false},{"id":683,"name":"madhapar gam road crossing","lat":22.34581,"lon":70.76738,"region":2,"is_gate":true},{"id":684,"name":"Somanath Society main road","lat":22.27678,"lon":70.84036,"region":20,"is_gate":true},{"id":685,"name":"Axar city","lat":22.27821,"lon":70.84174,"region":22,"is_gate":false},{"id":686,"name":"Maruti complex","lat":22.28138,"lon":70.84081,"region":16,"is_gate":false},{"id":687,"name":"rampark street no.1","lat":22.28069,"lon":70.84256,"region":4,"is_gate":false},{"id":688,"name":"AG park","lat":22.27953,"lon":70.8464,"region":4,"is_gate":false},{"id":689,"name":"parshuram indu. street no.3","lat":22.2785,"lon":70.84954,"region":4,"is_gate":false},{"id":690,"name":"sadbhavana complex","lat":22.27756,"lon":70.85538,"region":4,"is_gate":false},{"id":691,"name":"Swaminarayan vidhyalay","lat":22.28002,"lon":70.85578,"region":4,"is_gate":true},{"id":692,"name":"B T Savani hospital","lat":22.287399,"lon":70.752197,"region":7,"is_gate":true},{"id":693,"name":"Guruji Aavas Yojna","lat":22.2981,"lon":70.757698,"region":7,"is_gate":false},{"id":694,"name":"Pandit dindayaal Civil Hospital","lat":22.303123,"lon":70.801079,"region":7,"is_gate":false},{"id":695,"name":"Bhagvatipara Road Crossing","lat":22.33721456411116,"lon":70.80757164224843,"region":6,"is_gate":false},{"id":696,"name":"Vinoba Township Crossing","lat":22.33145865464932,"lon":70.8074429352775,"region":7,"is_gate":true},{"id":697,"name":"Bhagavati para (jay prakashnagar)","lat":22.328163165503906,"lon":70.80730538728326,"region":7,"is_gate":false},{"id":698,"name":"Vambe Aavash Yojana crossing","lat":22.271688,"lon":70.759903,"region":7,"is_gate":false},{"id":699,"name":"Shree Vitthalbhai Radadiya Chowk","lat":22.2495,"lon":70.764122,"region":7,"is_gate":true},{"id":700,"name":"Shyamal Upavan","lat":22.248585,"lon":70.766808,"region":1,"is_gate":true},{"id":701,"name":"Pavitram Heights","lat":22.245918,"lon":70.775871,"region":1,"is_gate":false},{"id":702,"name":"Sarvodaya School","lat":22.246037,"lon":70.778122,"region":1,"is_gate":true},{"id":703,"name":"Udgam School","lat":22.245918,"lon":70.783951,"region":1,"is_gate":false},{"id":704,"name":"Khodal Chowk","lat":22.245794,"lon":70.786407,"region":1,"is_gate":false},{"id":705,"name":"Sardar Park","lat":22.245594,"lon":70.790001,"region":1,"is_gate":false},{"id":706,"name":"AKSHAR PARISHAR","lat":22.249246192702287,"lon":70.76945108627962,"region":6,"is_gate":false},{"id":707,"name":"SHIV /shree  lalubhai Township","lat":22.251721971057076,"lon":70.7687633025546,"region":1,"is_gate":true},{"id":708,"name":"Mirabai TOWNSHIP","lat":22.252754671673763,"lon":70.77054398812032,"region":0,"is_gate":true},{"id":709,"name":"Saurashtra High School","lat":22.28875541218018,"lon":70.77908439346353,"region":23,"is_gate":false},{"id":710,"name":"GETCO chowk","lat":22.2495,"lon":70.764099,"region":23,"is_gate":false},{"id":711,"name":"City light party plot","lat":22.2444,"lon":70.749397,"region":23,"is_gate":false},{"id":712,"name":"Gujrat Housing Board  (Munjka)","lat":22.29136,"lon":70.73111,"region":23,"is_gate":false},{"id":713,"name":"Balaji hall","lat":22.271132,"lon":70.780161,"region":23,"is_gate":false},{"id":714,"name":"C.M. Avash  (Munjka)","lat":22.28798332722015,"lon":70.73360638317672,"region":23,"is_gate":false},{"id":715,"name":"IP Misson School","lat":22.304609,"lon":70.803131,"region":23,"is_gate":false},{"id":413,"name":"kamdar nurshing collage","lat":22.291425292453876,"lon":70.72057351494054,"region":19,"is_gate":false},{"id":529,"name":"CDS BIPIN RAVAT UNDER BRIDGE","lat":22.284695119343155,"lon":70.79002761359382,"region":20,"is_gate":false},{"id":536,"name":"Suvarna Height","lat":22.242523145337053,"lon":70.76975792643434,"region":7,"is_gate":false},{"id":716,"name":"Gokul Park","lat":22.277874753278528,"lon":70.85207224297476,"region":23,"is_gate":false},{"id":539,"name":"Jakharapir dada Bus Stop","lat":22.21697,"lon":70.75751,"region":7,"is_gate":false},{"id":47,"name":"AIIMS Hospital Circle","lat":22.375289444682224,"lon":70.7400105907427,"region":10,"is_gate":false},{"id":418,"name":"Parapipaliya Gaam Crossing","lat":22.34307601635881,"lon":70.73803970450696,"region":19,"is_gate":false},{"id":509,"name":"Virani Chowk","lat":22.28676647219011,"lon":70.7919891759317,"region":8,"is_gate":false}],"gates_by_region":{"0":[291,708,679,18,20,116,668],"14":[98,99,226,165,141,557,534,95],"22":[34,164,5,14,272,276],"1":[386,707,217,590,271,656,17,220,316,568,601,700,702],"2":[683,77,81,86,248,281,94,255],"18":[307,342,311,344,122,93],"20":[382,482,581,487,74,76,684,560,528,561,247,670],"4":[488,691,527],"7":[615,113,692,277,696,90,699,671],"6":[334,79],"3":[626],"15":[326,370,212,21,157,124,317,318],"9":[33,357,453,301,213,246],"21":[30],"12":[368,426,390],"13":[512,523,401,180,412,223],"11":[197,313,501],"10":[50,43,58,55],"16":[224,235],"23":[4,391],"17":[345,570,476,181],"19":[230,422,582,415,221,383],"8":[450,87],"5":[73]}};
+
+// ─── State ────────────────────────────────────────────────────────────
+let currentData = null;
+let map = null;
+let markers = [];
+let stopMode = 'all';
+let filterMode = 'all';
+let selectedRegion = null;
+let uploadedFiles = {};
+
+// ─── 24-colour palette (perceptually distinct, dark-theme friendly) ───
+const PALETTE = [
+  '#38bdf8','#f472b6','#4ade80','#fb923c','#a78bfa',
+  '#facc15','#2dd4bf','#f87171','#818cf8','#34d399',
+  '#fbbf24','#60a5fa','#e879f9','#a3e635','#fb7185',
+  '#38bdf8','#c084fc','#86efac','#fca5a5','#67e8f9',
+  '#d8b4fe','#6ee7b7','#fcd34d','#93c5fd'
+];
+
+function regionColor(id) {
+  return PALETTE[id % PALETTE.length];
+}
+
+// ─── Map init ─────────────────────────────────────────────────────────
+function initMap(center) {
+  if (map) map.remove();
+  map = L.map('map', { zoomControl: true }).setView(center, 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
+  }).addTo(map);
+  map.on('click', () => {
+    selectedRegion = null;
+    document.getElementById('info-panel').classList.remove('visible');
+    updateMarkers();
+    updateRegionList();
+  });
+}
+
+// ─── Build markers ────────────────────────────────────────────────────
+function buildMarkers(data) {
+  markers.forEach(m => m.remove());
+  markers = [];
+
+  data.stops.forEach(stop => {
+    const color = stop.region >= 0 ? regionColor(stop.region) : '#555';
+    const isGate = stop.is_gate;
+
+    let icon;
+    if (isGate) {
+      icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:14px;height:14px;
+          background:${color};
+          border:2px solid #fff;
+          transform:rotate(45deg);
+          box-shadow:0 0 6px ${color}88;
+          border-radius:2px;
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+    } else {
+      icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:8px;height:8px;
+          background:${color};
+          border-radius:50%;
+          opacity:0.85;
+          box-shadow:0 0 4px ${color}66;
+        "></div>`,
+        iconSize: [8, 8],
+        iconAnchor: [4, 4]
+      });
+    }
+
+    const m = L.marker([stop.lat, stop.lon], { icon })
+      .on('click', e => {
+        e.originalEvent.stopPropagation();
+        showInfo(stop, color);
+        selectedRegion = stop.region;
+        updateMarkers();
+        updateRegionList();
+      });
+
+    m._stopData = stop;
+    markers.push(m);
+  });
+
+  updateMarkers();
+}
+
+function updateMarkers() {
+  markers.forEach(m => {
+    const stop = m._stopData;
+    const visible = isVisible(stop);
+    const dimmed = selectedRegion !== null && stop.region !== selectedRegion;
+
+    if (visible) {
+      if (!map.hasLayer(m)) m.addTo(map);
+      const el = m.getElement();
+      if (el) el.style.opacity = dimmed ? '0.15' : '1';
+    } else {
+      if (map.hasLayer(m)) m.remove();
+    }
+  });
+}
+
+function isVisible(stop) {
+  if (stopMode === 'none') return false;
+  if (stopMode === 'gates' && !stop.is_gate) return false;
+  if (filterMode === 'selected' && selectedRegion !== null && stop.region !== selectedRegion) return false;
+  return true;
+}
+
+// ─── Info panel ───────────────────────────────────────────────────────
+function showInfo(stop, color) {
+  const panel = document.getElementById('info-panel');
+  document.getElementById('info-name').textContent = stop.name || `Stop ${stop.id}`;
+  document.getElementById('info-row').innerHTML = `
+    <span>ID: ${stop.id}</span>
+    <span>Region ${stop.region}</span>
+    ${stop.is_gate
+      ? '<span class="info-badge badge-gate">GATE</span>'
+      : '<span class="info-badge badge-stop">STOP</span>'}
+  `;
+  panel.style.borderColor = color;
+  panel.classList.add('visible');
+}
+
+// ─── Region list ──────────────────────────────────────────────────────
+function buildRegionList(data) {
+  const regionStats = {};
+  data.stops.forEach(s => {
+    if (!regionStats[s.region]) regionStats[s.region] = { stops: 0, gates: 0 };
+    regionStats[s.region].stops++;
+    if (s.is_gate) regionStats[s.region].gates++;
+  });
+
+  const list = document.getElementById('region-list');
+  list.innerHTML = '';
+
+  const regions = Object.keys(regionStats).map(Number).sort((a,b) => a-b);
+  regions.forEach(rid => {
+    const { stops, gates } = regionStats[rid];
+    const color = regionColor(rid);
+    const item = document.createElement('div');
+    item.className = 'region-item';
+    item.innerHTML = `
+      <div class="region-dot" style="background:${color}"></div>
+      <div class="region-name">Region ${rid}</div>
+      <div class="region-counts">
+        <span>${stops}s</span>
+        <span class="gate-count">${gates}g</span>
+      </div>
+    `;
+    item.onclick = () => {
+      selectedRegion = selectedRegion === rid ? null : rid;
+      document.getElementById('info-panel').classList.remove('visible');
+      updateMarkers();
+      updateRegionList();
+      if (selectedRegion !== null) zoomToRegion(rid, data);
+    };
+    list.appendChild(item);
+  });
+
+  // stats
+  document.getElementById('stat-regions').textContent = regions.length;
+  document.getElementById('stat-stops').textContent = data.stops.length;
+  document.getElementById('stat-gates').textContent = data.stops.filter(s=>s.is_gate).length;
+}
+
+function updateRegionList() {
+  document.querySelectorAll('.region-item').forEach((item, i) => {
+    const regionId = parseInt(item.querySelector('.region-name').textContent.replace('Region ',''));
+    item.classList.toggle('selected', regionId === selectedRegion);
+  });
+  document.getElementById('stat-sel').textContent =
+    selectedRegion !== null ? `R${selectedRegion}` : '—';
+}
+
+function zoomToRegion(rid, data) {
+  const pts = data.stops.filter(s => s.region === rid);
+  if (!pts.length) return;
+  const lats = pts.map(s=>s.lat), lons = pts.map(s=>s.lon);
+  map.fitBounds([
+    [Math.min(...lats)-0.005, Math.min(...lons)-0.005],
+    [Math.max(...lats)+0.005, Math.max(...lons)+0.005]
+  ]);
+}
+
+// ─── Controls ─────────────────────────────────────────────────────────
+function setStopMode(mode, btn) {
+  stopMode = mode;
+  btn.closest('.toggle').querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateMarkers();
+}
+
+function setFilter(mode, btn) {
+  filterMode = mode;
+  btn.closest('.toggle').querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateMarkers();
+}
+
+// ─── Load data ────────────────────────────────────────────────────────
+function loadData(data, label) {
+  currentData = data;
+  const lats = data.stops.map(s=>s.lat), lons = data.stops.map(s=>s.lon);
+  const center = [
+    (Math.min(...lats)+Math.max(...lats))/2,
+    (Math.min(...lons)+Math.max(...lons))/2
+  ];
+  initMap(center);
+  buildMarkers(data);
+  buildRegionList(data);
+  document.getElementById('status').textContent = `Showing: ${label}`;
+}
+
+// ─── File upload handling ─────────────────────────────────────────────
+function fileLoaded(type, input) {
+  uploadedFiles[type] = input.files[0];
+  document.getElementById(`btn-${type === 'stops' ? 'stops' : type}`).classList.add('loaded');
+}
+
+function loadUploadedFiles() {
+  const hasStops = uploadedFiles.stops;
+  const hasRegions = uploadedFiles.regions;
+  const hasGates = uploadedFiles.gates;
+
+  if (!hasStops || !hasRegions || !hasGates) {
+    alert('Please select all three files: stops.txt, regions.json, and gates.json');
+    return;
+  }
+
+  document.getElementById('status').textContent = 'Loading...';
+
+  Promise.all([
+    readFile(uploadedFiles.stops),
+    readFile(uploadedFiles.regions),
+    readFile(uploadedFiles.gates)
+  ]).then(([stopsText, regionsText, gatesText]) => {
+    try {
+      const stops = parseStops(stopsText);
+      const regions = JSON.parse(regionsText);
+      const gatesByRegion = JSON.parse(gatesText);
+
+      const allGates = new Set(
+        Object.values(gatesByRegion).flat().map(Number)
+      );
+
+      const stopData = stops.map(s => ({
+        id: Number(s.stop_id),
+        name: s.stop_name || '',
+        lat: parseFloat(s.stop_lat),
+        lon: parseFloat(s.stop_lon),
+        region: regions[String(s.stop_id)] ?? regions[Number(s.stop_id)] ?? -1,
+        is_gate: allGates.has(Number(s.stop_id))
+      })).filter(s => !isNaN(s.lat) && !isNaN(s.lon));
+
+      loadData({ stops: stopData, gates_by_region: gatesByRegion }, 'Uploaded data');
+    } catch(e) {
+      alert('Error parsing files: ' + e.message);
+      document.getElementById('status').textContent = 'Error loading files';
+    }
+  });
+}
+
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+function parseStops(text) {
+  const lines = text.trim().split('\n');
+  const header = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g,''));
+    const obj = {};
+    header.forEach((h,i) => obj[h] = vals[i] || '');
+    return obj;
+  });
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────
+loadData(DEMO_DATA, 'Rajkot (demo data)');
+</script>
+</body>
+</html>
